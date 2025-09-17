@@ -9,16 +9,25 @@ export default function SignInEmail() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
+  // const onLogin = async () => {
+  //   try {
+  //     await signInWithEmailAndPassword(auth, email, password);
+  //     Alert.alert("Login OK", "Welcome back!");
+  //     // Sau khi login thành công có thể navigate sang Home
+  //     // navigation.navigate("Home");
+  //   } catch (e: any) {
+  //     Alert.alert("Error", e.message);
+  //   }
+  // };
+
   const onLogin = async () => {
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      Alert.alert("Login OK", "Welcome back!");
-      // Sau khi login thành công có thể navigate sang Home
-      // navigation.navigate("Home");
-    } catch (e: any) {
-      Alert.alert("Error", e.message);
-    }
-  };
+  // Bỏ qua xác thực Firebase, điều hướng thẳng sang Home
+  navigation.reset({
+    index: 0,
+    routes: [{ name: "Home" }], // Đặt đúng tên screen trong Stack
+  });
+};
+
 
   return (
     <View style={styles.container}>
