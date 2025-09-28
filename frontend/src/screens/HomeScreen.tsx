@@ -4,6 +4,7 @@ import {
   StyleSheet, Dimensions, ScrollView, SafeAreaView
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import TabBar from "./TabBar";
 
 const { width } = Dimensions.get("window");
 
@@ -106,12 +107,17 @@ export default function HomeScreen({ navigation }: any) {
           {recentlyAdded.map((i) => <SmallCard key={i.id} item={i} />)}
         </View>
       </ScrollView>
+
+      <View style={{ marginBottom: 50 }}>
+        <TabBar />
+      </View>
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  safe:{flex:1,backgroundColor:"#fff"},container:{flex:1,paddingHorizontal:16},
+  safe:{flex:1,backgroundColor:"#fff"},
+  container:{flex:1,paddingHorizontal:16},
   header:{flexDirection:"row",justifyContent:"space-between",alignItems:"center",marginVertical:12},
   title:{fontSize:22,fontWeight:"bold",color:"#f77"},subtitle:{fontSize:14,color:"#555"},
   iconRow:{flexDirection:"row"},iconBtn:{backgroundColor:"#ffeef0",padding:8,borderRadius:20,marginLeft:8},
