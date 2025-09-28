@@ -4,6 +4,7 @@ import {
   StyleSheet, Dimensions, SafeAreaView
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import TabBar from "./TabBar";
 
 const { width } = Dimensions.get("window");
 
@@ -73,6 +74,9 @@ export default function CategoryScreen({ route, navigation }: any) {
           showsVerticalScrollIndicator={false}
         />
       )}
+      <View style={{ marginBottom: 50 }}>
+              <TabBar />
+            </View>
     </SafeAreaView>
   );
 }
