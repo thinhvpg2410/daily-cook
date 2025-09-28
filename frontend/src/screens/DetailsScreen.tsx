@@ -4,6 +4,8 @@ import {
   ScrollView, SafeAreaView
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import TabBar from "./TabBar";
+
 
 export default function DetailsScreen({ route, navigation }: any) {
   const { item } = route.params; // nhận món ăn từ Home/Category
@@ -90,6 +92,9 @@ export default function DetailsScreen({ route, navigation }: any) {
           ))}
         </View>
       </ScrollView>
+      <View style={{ marginBottom: 50 }}>
+                    <TabBar />
+                  </View>
     </SafeAreaView>
   );
 }
