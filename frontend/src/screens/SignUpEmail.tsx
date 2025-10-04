@@ -1,7 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
-import { auth } from "../firebase";
-import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-native";
 
 export default function SignUpEmail({ navigation }: any) {
   const [fullName, setFullName] = useState("");
@@ -11,15 +9,9 @@ export default function SignUpEmail({ navigation }: any) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
 
-  const onSignUp = async () => {
-    if (password !== confirm) return Alert.alert("Error", "Passwords do not match");
-    try {
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      await updateProfile(cred.user, { displayName: fullName });
-      Alert.alert("Sign Up Successful!");
-    } catch (e: any) {
-      Alert.alert("Error", e.message);
-    }
+  const onSignUp = () => {
+    // 👉 Nhảy thẳng sang Onboarding2, không check gì hết
+    navigation.replace("Onboarding2");
   };
 
   return (
