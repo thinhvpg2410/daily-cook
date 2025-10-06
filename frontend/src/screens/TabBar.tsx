@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef, useEffect } from "react";
 import { View, TouchableOpacity, StyleSheet, SafeAreaView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
@@ -6,6 +6,34 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 export default function TabBar() {
   const navigation = useNavigation<any>();
   const route = useRoute();
+
+  // ref để giữ lại category/item cuối cùng
+  const lastCategory = useRef<string>("Breakfast");
+  const lastItem = useRef<any>({
+    id: "1",
+    title: "Pancake & Cream",
+    desc: "Fluffy pancakes with cream",
+    image:
+      "https://heavenlyhomecooking.com/wp-content/uploads/2022/06/Sweet-Cream-Pancakes-Recipe-Featured-500x500.jpg",
+    time: "20min",
+    likes: 2273,
+  });
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("state", (e: any) => {
+      const currentRoute = e.data.state.routes[e.data.state.index];
+
+      if (currentRoute.name === "Category" && currentRoute.params?.category) {
+        lastCategory.current = currentRoute.params.category;
+      }
+
+      if (currentRoute.name === "Details" && currentRoute.params?.item) {
+        lastItem.current = currentRoute.params.item;
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation]);
 
   const tabs = [
     { name: "Home", icon: "home" },
@@ -23,7 +51,15 @@ export default function TabBar() {
             <TouchableOpacity
               key={tab.name}
               style={styles.tab}
-              onPress={() => navigation.navigate(tab.name)}
+              onPress={() => {
+                if (tab.name === "Category") {
+                  navigation.navigate("Category", { category: lastCategory.current });
+                } else if (tab.name === "Details") {
+                  navigation.navigate("Details", { item: lastItem.current });
+                } else {
+                  navigation.navigate(tab.name);
+                }
+              }}
             >
               <Ionicons
                 name={focused ? (tab.icon as any) : (`${tab.icon}-outline` as any)}
