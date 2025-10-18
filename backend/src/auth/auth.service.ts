@@ -24,13 +24,21 @@ export class AuthService {
     if (cid) this.googleClient = new OAuth2Client(cid);
   }
 
-  async register(email: string, password: string, name: string) {
-    const exists = await this.prisma.user.findUnique({ where: { email } });
-    if (exists) throw new BadRequestException("Email đã tồn tại");
+  async register(email: string, password: string, name: string, phone: string) {
+    const exists = await this.prisma.user.findFirst({
+      where: { OR: [{ email }, { phone }] },
+    });
+    if (exists)
+      throw new BadRequestException("Email hoặc số điện thoại đã tồn tại");
 
     const passwordHash = await argon2.hash(password);
     const user = await this.prisma.user.create({
-      data: { email, passwordHash, name },
+      data: {
+        email,
+        passwordHash,
+        name,
+        phone,
+      },
     });
     return this.sign(user);
   }
@@ -50,6 +58,14 @@ export class AuthService {
     return this.sign(user);
   }
 
+  private async genUniquePlaceholderPhone(): Promise<string> {
+    while (true) {
+      const phone = `+999${Math.floor(1e8 + Math.random() * 9e8)}`; // +999 + 9 digits
+      const exists = await this.prisma.user.findUnique({ where: { phone } });
+      if (!exists) return phone;
+    }
+  }
+
   // Đăng nhập bằng Google ID Token (từ Google One Tap / Sign-In)
   async loginWithGoogle(idToken: string) {
     if (!this.googleClient)
@@ -65,8 +81,15 @@ export class AuthService {
     const { email, sub: googleId, name, picture } = payload;
     let user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) {
+      const phone = await this.genUniquePlaceholderPhone();
       user = await this.prisma.user.create({
-        data: { email, googleId, name: name || "", avatarUrl: picture || "" },
+        data: {
+          email,
+          googleId,
+          name: name || "",
+          avatarUrl: picture || "",
+          phone,
+        },
       });
     } else if (!user.googleId) {
       user = await this.prisma.user.update({

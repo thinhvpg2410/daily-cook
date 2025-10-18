@@ -16,6 +16,8 @@ export class UsersService {
         name: true,
         avatarUrl: true,
         role: true,
+        phone: true,
+        dob: true,
         createdAt: true,
       },
     });
@@ -31,6 +33,8 @@ export class UsersService {
         name: true,
         avatarUrl: true,
         role: true,
+        phone: true,
+        dob: true,
       },
     });
   }
