@@ -6,6 +6,7 @@ export default function SignUpEmail({navigation}: any) {
     const {register} = useAuth();
     const [fullName, setFullName] = useState("");
     const [email, setEmail] = useState("");
+    const [phone, setPhone] = useState("");
     const [mobile, setMobile] = useState("");
     const [dob, setDob] = useState("");
     const [password, setPassword] = useState("");
@@ -21,7 +22,7 @@ export default function SignUpEmail({navigation}: any) {
         if (password !== confirm) return Alert.alert("Error", "Passwords do not match");
         try {
             setLoading(true);
-            await register(fullName.trim(), email.trim(), password);
+            await register(fullName.trim(), email.trim(), password, phone.trim());
             Alert.alert("Success", "Account created. Please log in.");
             navigation.replace("SignInEmail");
         } catch (e: any) {
@@ -38,7 +39,7 @@ export default function SignUpEmail({navigation}: any) {
             <TextInput style={styles.input} placeholder="Full Name" value={fullName} onChangeText={setFullName}/>
             <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail}
                        autoCapitalize="none"/>
-            <TextInput style={styles.input} placeholder="Mobile Number" value={mobile} onChangeText={setMobile}
+            <TextInput style={styles.input} placeholder="Mobile Number" value={phone} onChangeText={setPhone}
                        keyboardType="phone-pad"/>
             <TextInput style={styles.input} placeholder="Date of Birth" value={dob} onChangeText={setDob}/>
             <TextInput style={styles.input} placeholder="Password" value={password} onChangeText={setPassword}

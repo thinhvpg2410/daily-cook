@@ -4,11 +4,11 @@ export type LoginResponse =
     | { accessToken: string; user: { userId: string; email: string; name?: string } }
     | { requires2FA: true; tmpToken: string };
 
-export async function registerApi(name: string, email: string, password: string) {
-    // POST /auth/register { email, password, name }
+export async function registerApi(name: string, email: string, password: string, phone: string) {
+    // POST /auth/register { email, password, name, phone }
     return http("/auth/register", {
         method: "POST",
-        body: {email, password, name},
+        body: {email, password, name, phone},
     });
 }
 

@@ -2,7 +2,7 @@ import React, {createContext, useContext, useEffect, useMemo, useState} from "re
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {loginApi, registerApi, meApi} from "../api/auth";
 
-type User = { userId: string; email: string; name?: string };
+type User = { userId: string; email: string; name?: string; phone?: string };
 type AuthCtx = {
     user: User | null;
     loading: boolean;
@@ -10,7 +10,7 @@ type AuthCtx = {
         requires2FA: true;
         tmpToken: string
     }>;
-    register: (name: string, email: string, password: string) => Promise<void>;
+    register: (name: string, email: string, password: string, phone:string) => Promise<void>;
     logout: () => Promise<void>;
     refreshMe: () => Promise<void>;
 };
@@ -49,8 +49,8 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({children}) => {
         setUser(res.user);
     };
 
-    const register = async (name: string, email: string, password: string) => {
-        const res = await registerApi(name, email, password);
+    const register = async (name: string, email: string, password: string, phone: string) => {
+        const res = await registerApi(name, email, password, phone);
         // Nếu backend trả token ngay sau register, có thể lưu luôn; nếu không, cho user login lại.
         if (res?.accessToken && res?.user) {
             await AsyncStorage.setItem("token", res.accessToken);
