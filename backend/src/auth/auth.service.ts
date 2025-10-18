@@ -124,6 +124,24 @@ export class AuthService {
     return { enabled: true };
   }
 
+  async getProfile(userId: string) {
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        phone: true,
+        dob: true,
+        avatarUrl: true,
+        role: true,
+        createdAt: true,
+      },
+    });
+    if (!u) throw new UnauthorizedException();
+    return { ...u, userId: u.id };
+  }
+
   private sign(user: any) {
     const payload = { sub: user.id, email: user.email, role: user.role };
     const token = this.jwt.sign(payload);
@@ -132,8 +150,12 @@ export class AuthService {
       user: {
         id: user.id,
         email: user.email,
-        name: user.name,
+        name: user.name ?? null,
+        phone: user.phone ?? null,
+        dob: user.dob ?? null,
+        avatarUrl: user.avatarUrl ?? null,
         role: user.role,
+        createdAt: user.createdAt ?? null,
       },
     };
   }
