@@ -48,7 +48,7 @@ export class RecipesService {
     if (q.tag) {
       where.tags = { has: q.tag };
     }
-    const skip = (q.page - 1) * q.limit;
+    const skip = ((q.page ?? 1) - 1) * (q.limit ?? 10);
     const [total, data] = await this.prisma.$transaction([
       this.prisma.recipe.count({ where }),
       this.prisma.recipe.findMany({
