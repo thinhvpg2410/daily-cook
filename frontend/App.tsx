@@ -20,6 +20,7 @@ import CategoryScreen from "./src/screens/CategoryScreen";
 import DetailsScreen from "./src/screens/DetailsScreen";
 import ProfileScreen from "./src/screens/ProfileScreen";
 import CalendarScreen from "./src/screens/CalendarScreen";
+import MealSuggestScreen from "./src/screens/MealSuggestScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -52,6 +53,7 @@ function RootNavigator() {
             <Stack.Screen name="Details" component={DetailsScreen}/>
             <Stack.Screen name="Profile" component={ProfileScreen}/>
             <Stack.Screen name="Calendar" component={CalendarScreen}/>
+            <Stack.Screen name="MealPlan" component={MealSuggestScreen}/>
         </Stack.Navigator>
     );
 }

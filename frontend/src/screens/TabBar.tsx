@@ -37,7 +37,7 @@ export default function TabBar() {
 
   const tabs = [
     { name: "Home", icon: "home" },
-    { name: "Category", icon: "layers" },
+    { name: "MealPlan", icon: "layers" },
     { name: "Details", icon: "book" },
     { name: "Profile", icon: "person" },
   ];
