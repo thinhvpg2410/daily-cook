@@ -13,97 +13,148 @@ enum Role {
 }
 
 model User {
-  id              String   @id @default(cuid())
-  email           String   @unique
-  phone           String   @unique
-  passwordHash    String?
-  name            String?
-  avatarUrl       String?
-  googleId        String?  @unique
-  dob             DateTime?
-  isTwoFAEnabled  Boolean  @default(false)
-  twoFASecret     String?
-  role            Role     @default(USER)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  recipes         Recipe[]        @relation("UserRecipes")
-  mealPlans       MealPlan[]      @relation("UserMealPlans")
-  shoppingLists   ShoppingList[]
+  id             String                @id @default(cuid())
+  email          String                @unique
+  passwordHash   String?
+  googleId       String?
+  name           String?
+  phone          String                @unique
+  dob            DateTime?
+  avatarUrl      String?
+  role           String                @default("USER")
+  isTwoFAEnabled Boolean               @default(false)
+  twoFASecret    String?
+  recipes        Recipe[]
+  mealPlans      MealPlan[]
+  preference     UserPreference?
+  foodLogs       FoodLog[]
+  shoppingLists  ShoppingList[]
+  aiLogs         AIRecommendationLog[]
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
 
   @@index([createdAt])
 }
 
-model Ingredient {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  unit      String?
-  kcal      Float?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model UserPreference {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  gender              String? // "male" | "female"
+  age                 Int?
+  height              Int? // cm
+  weight              Float? // kg
+  activity            String? // "low" | "medium" | "high"
+  goal                String? // "lose_weight" | "maintain" | "gain_muscle"
+  dailyKcalTarget     Float? // kcal/day
+  dietType            String? // "normal" | "vegan" | "low_carb"
+  dislikedIngredients String[] @default([])
+  likedTags           String[] @default([])
+  user                User     @relation(fields: [userId], references: [id])
+  updatedAt           DateTime @updatedAt
+}
 
-  recipeItems RecipeIngredient[]
+model Ingredient {
+  id        String       @id @default(cuid())
+  name      String       @unique
+  unit      String? // g / ml / tbsp ...
+  kcal      Float?       @default(0)
+  protein   Float?       @default(0)
+  fat       Float?       @default(0)
+  carbs     Float?       @default(0)
+  fiber     Float?       @default(0)
+  sugar     Float?       @default(0)
+  sodium    Float?       @default(0)
+  items     RecipeItem[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 
   @@index([name])
 }
 
 model Recipe {
-  id          String   @id @default(cuid())
-  authorId    String?
+  id          String       @id @default(cuid())
   title       String
   description String?
-  steps       Json
-  tags        String[]          // ["Breakfast","Soup",...]
+  region      String? // "Northern" | "Central" | "Southern"
+  cookTime    Int?         @default(30)
+  likes       Int?         @default(0)
+  totalKcal   Float?       @default(0)
+  protein     Float?       @default(0)
+  fat         Float?       @default(0)
+  carbs       Float?       @default(0)
+  tags        String[]
   image       String?
-  cookTime    Int?              // phút
-  likes       Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  steps       Json?
+  authorId    String
+  author      User         @relation(fields: [authorId], references: [id])
+  items       RecipeItem[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
-  author      User?    @relation("UserRecipes", fields: [authorId], references: [id], onDelete: SetNull)
-  items       RecipeIngredient[]
-
-  @@index([createdAt])
-  @@index([cookTime])
-  @@index([likes])
+  FoodLog FoodLog[]
 }
 
-model RecipeIngredient {
+model RecipeItem {
   id           String     @id @default(cuid())
   recipeId     String
   ingredientId String
   amount       Float
   unitOverride String?
-
-  recipe     Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
-  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
-
-  @@unique([recipeId, ingredientId])  // 1 nguyên liệu 1 lần/recipe
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+  recipe       Recipe     @relation(fields: [recipeId], references: [id])
+  createdAt    DateTime   @default(now())
 }
 
 model MealPlan {
   id        String   @id @default(cuid())
   userId    String
-  date      DateTime // ngày áp dụng
-  slots     Json     // { breakfast: recipeId[], lunch: [], dinner: [] }
+  user      User     @relation(fields: [userId], references: [id])
+  date      DateTime
   note      String?
+  slots     Json // { breakfast: [recipeIds], lunch: [...], dinner: [...] }
+  totalKcal Float?   @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  user      User     @relation("UserMealPlans", fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, date])
 }
 
 model ShoppingList {
+  id          String   @id @default(cuid())
+  title       String   @default("Shopping List")
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  weekStart   DateTime
+  weekEnd     DateTime
+  items       Json // [{ingredientId, name, qty, unit, checked}]
+  isCompleted Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model FoodLog {
   id        String   @id @default(cuid())
   userId    String
-  title     String
-  items     Json     // [{ingredientId, name, qty, unit, checked}]
+  user      User     @relation(fields: [userId], references: [id])
+  date      DateTime // ngày ăn
+  mealType  String // "breakfast" | "lunch" | "dinner" | "snack"
+  recipeId  String?
+  recipe    Recipe?  @relation(fields: [recipeId], references: [id])
+  kcal      Float?
+  protein   Float?
+  fat       Float?
+  carbs     Float?
+  note      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, createdAt])
+model AIRecommendationLog {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  input      Json // ex: {date, slot, region, kcalTarget, filters...}
+  output     Json // ex: {recipes: [..], totalKcal: 1340}
+  modelName  String? // ex: "DailyCook-v1"
+  durationMs Int? // thời gian xử lý
+  feedback   String? // user feedback ("good", "too salty", etc.)
+  createdAt  DateTime @default(now())
 }
