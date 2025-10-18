@@ -13,46 +13,59 @@ enum Role {
 }
 
 model User {
-  id            String   @id @default(cuid())
-  email         String   @unique
-  passwordHash  String?
-  name          String?
-  avatarUrl     String?
-  googleId      String?  @unique
-  isTwoFAEnabled Boolean  @default(false)
-  twoFASecret   String?
-  role          Role      @default(USER)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id              String   @id @default(cuid())
+  email           String   @unique
+  phone           String   @unique
+  passwordHash    String?
+  name            String?
+  avatarUrl       String?
+  googleId        String?  @unique
+  dob             DateTime?
+  isTwoFAEnabled  Boolean  @default(false)
+  twoFASecret     String?
+  role            Role     @default(USER)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  recipes       Recipe[]        @relation("UserRecipes")
-  mealPlans     MealPlan[]      @relation("UserMealPlans")
-  shoppingLists ShoppingList[]
+  recipes         Recipe[]        @relation("UserRecipes")
+  mealPlans       MealPlan[]      @relation("UserMealPlans")
+  shoppingLists   ShoppingList[]
+
+  @@index([createdAt])
 }
 
 model Ingredient {
   id        String   @id @default(cuid())
-  name      String
-  unit      String?  // g, ml, cái...
-  kcal      Float?   // năng lượng/100g
+  name      String   @unique
+  unit      String?
+  kcal      Float?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   recipeItems RecipeIngredient[]
+
+  @@index([name])
 }
 
 model Recipe {
-  id        String   @id @default(cuid())
-  authorId  String
-  title     String
+  id          String   @id @default(cuid())
+  authorId    String?
+  title       String
   description String?
-  steps     Json     // mảng step
-  tags      String[] // ["ăn sáng","eat-clean"]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  steps       Json
+  tags        String[]          // ["Breakfast","Soup",...]
+  image       String?
+  cookTime    Int?              // phút
+  likes       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  author    User     @relation("UserRecipes", fields: [authorId], references: [id])
-  items     RecipeIngredient[]
+  author      User?    @relation("UserRecipes", fields: [authorId], references: [id], onDelete: SetNull)
+  items       RecipeIngredient[]
+
+  @@index([createdAt])
+  @@index([cookTime])
+  @@index([likes])
 }
 
 model RecipeIngredient {
@@ -62,22 +75,24 @@ model RecipeIngredient {
   amount       Float
   unitOverride String?
 
-  recipe     Recipe     @relation(fields: [recipeId], references: [id])
-  ingredient Ingredient @relation(fields: [ingredientId], references: [id])
+  recipe     Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
 
-  @@unique([recipeId, ingredientId])
+  @@unique([recipeId, ingredientId])  // 1 nguyên liệu 1 lần/recipe
 }
 
 model MealPlan {
   id        String   @id @default(cuid())
   userId    String
-  date      DateTime // ngày áp dụng (có thể dùng tuần)
+  date      DateTime // ngày áp dụng
   slots     Json     // { breakfast: recipeId[], lunch: [], dinner: [] }
   note      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user      User     @relation("UserMealPlans", fields: [userId], references: [id])
+  user      User     @relation("UserMealPlans", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
 }
 
 model ShoppingList {
@@ -88,5 +103,7 @@ model ShoppingList {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
