@@ -14,6 +14,8 @@ export class RecipesService {
         description: dto.description,
         steps: dto.steps,
         tags: dto.tags,
+        image: dto.image ?? null,
+        cookTime: dto.cookTime ?? null,
         items: {
           create: dto.items.map((i) => ({
             ingredientId: i.ingredientId,
@@ -56,7 +58,16 @@ export class RecipesService {
         orderBy: { createdAt: "desc" },
         skip,
         take: q.limit,
-        select: { id: true, title: true, tags: true, createdAt: true },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          image: true,
+          cookTime: true,
+          likes: true,
+          tags: true,
+          createdAt: true,
+        },
       }),
     ]);
     return { total, page: q.page, limit: q.limit, data };
