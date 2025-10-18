@@ -1,11 +1,32 @@
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
+import { NestFactory } from "@nestjs/core";
+import { AppModule } from "./app.module";
+import helmet from "helmet";
+import { ValidationPipe } from "@nestjs/common";
+import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
+import { LoggingInterceptor } from "./common/interceptors/logging.interceptor";
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.use(helmet()); // bảo vệ header cơ bản
+  app.enableCors({ origin: true, credentials: true });
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.useGlobalFilters(new HttpExceptionFilter());
+  app.useGlobalInterceptors(new LoggingInterceptor());
 
-  app.enableCors();
+  const config = new DocumentBuilder()
+    .setTitle("DailyCook API")
+    .setDescription("Tài liệu API cho khóa luận")
+    .setVersion("1.0.0")
+    .addBearerAuth()
+    .build();
 
-  await app.listen(process.env.PORT || 3000);
+  const doc = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup("api/docs", app, doc);
+
+  const port = process.env.PORT || 3000;
+  await app.listen(port);
+  console.log(`🚀 DailyCook API running on http://localhost:${port}`);
 }
+
 bootstrap();
