@@ -10,10 +10,11 @@
 cd backend
 npm install
 npm prisma:generate
-prisma:seed
+npm prisma:seed
 npm run start:dev
 
 # App
 cd frontend 
 npm start
+
 
