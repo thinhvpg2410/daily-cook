@@ -40,6 +40,14 @@ export class ShoppingListService {
       checked: false,
     }));
     if (!persist) return { title, items };
-    return this.prisma.shoppingList.create({ data: { userId, title, items } });
+    return this.prisma.shoppingList.create({
+      data: {
+        userId,
+        title,
+        items,
+        weekStart: new Date(),
+        weekEnd: new Date(),
+      },
+    });
   }
 }
