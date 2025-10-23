@@ -22,6 +22,14 @@ import ProfileScreen from "./src/screens/ProfileScreen";
 import CalendarScreen from "./src/screens/CalendarScreen";
 import MealSuggestScreen from "./src/screens/MealSuggestScreen";
 
+//Profile
+import ShoppingListScreen from "./src/screens/ShoppingListScreen";
+import EditProfileScreen from "./src/screens/EditProfileScreen";
+import ChangePasswordScreen from "./src/screens/ChangePasswordScreen";
+import FavoriteRecipes from "./src/screens/FavoriteRecipesScreen";
+import NutritionTracker from "./src/screens/NutritionTrackerScreen";
+
+
 const Stack = createNativeStackNavigator();
 
 function RootNavigator() {
@@ -54,6 +62,11 @@ function RootNavigator() {
             <Stack.Screen name="Profile" component={ProfileScreen}/>
             <Stack.Screen name="Calendar" component={CalendarScreen}/>
             <Stack.Screen name="MealPlan" component={MealSuggestScreen}/>
+            <Stack.Screen name="ShoppingList" component={ShoppingListScreen} />
+            <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+            <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+            <Stack.Screen name="FavoriteRecipes" component={FavoriteRecipes} />
+            <Stack.Screen name="NutritionTracker" component={NutritionTracker} />
         </Stack.Navigator>
     );
 }
