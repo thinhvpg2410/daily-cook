@@ -8,9 +8,14 @@ import {
   ScrollView,
   FlatList,
   Dimensions,
+  ActivityIndicator,
+  Alert,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import * as Animatable from "react-native-animatable";
+import { useAuth } from "../context/AuthContext";
+import { updatePreferencesApi, UserPreferences } from "../api/users";
+import { setOnboardingCompleted, savePendingPreferences } from "../utils/onboarding";
 
 const { width, height } = Dimensions.get("window");
 
@@ -47,22 +52,28 @@ const allergies = [
   "Wheat",
   "Milk",
   "Fish",
+  "Tôm",
+  "Cua",
+  "Đậu phộng",
+  "Hạt điều",
 ];
+
 const diets = [
   "None",
   "Vegan",
-  "Paleo",
-  "Dukan",
   "Vegetarian",
-  "Atkins",
-  "Intermittent Fasting",
+  "Low Carb",
+  "Paleo",
+  "Keto",
 ];
 
 export default function Onboarding2() {
+  const { user, token } = useAuth();
   const [step, setStep] = useState(1);
   const [selectedAllergies, setSelectedAllergies] = useState<string[]>([]);
   const [selectedDiets, setSelectedDiets] = useState<string[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [loading, setLoading] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const navigation = useNavigation<any>();
 
@@ -86,6 +97,65 @@ export default function Onboarding2() {
       setList(list.filter((x) => x !== item));
     } else {
       setList([...list, item]);
+    }
+  };
+
+  // Xử lý khi hoàn thành onboarding
+  const handleFinish = async () => {
+    setLoading(true);
+    try {
+      // Map allergies và diets sang format backend
+      const dislikedIngredients = selectedAllergies.filter(a => a !== "None");
+      const dietType = selectedDiets.includes("Vegan") 
+        ? "vegan" 
+        : selectedDiets.includes("Vegetarian")
+        ? "vegetarian"
+        : selectedDiets.includes("Low Carb") || selectedDiets.includes("Keto")
+        ? "low_carb"
+        : "normal";
+
+      const preferences: UserPreferences = {
+        dislikedIngredients,
+        dietType: dietType as any,
+        likedTags: [], // Có thể thêm sau
+      };
+
+      // Nếu user đã đăng nhập, lưu preferences vào backend
+      if (token && user) {
+        try {
+          await updatePreferencesApi(preferences);
+        } catch (error) {
+          console.error("Error saving preferences:", error);
+          // Không block flow nếu lưu preferences thất bại
+        }
+      } else {
+        // Nếu chưa đăng nhập, lưu preferences tạm vào AsyncStorage
+        // Sẽ được lưu vào backend khi user đăng nhập
+        await savePendingPreferences(preferences);
+      }
+
+      // Đánh dấu đã hoàn thành onboarding
+      await setOnboardingCompleted();
+
+      // Chuyển đến màn hình phù hợp
+      if (token && user) {
+        // Đã đăng nhập -> Home
+        navigation.reset({
+          index: 0,
+          routes: [{ name: "Home" }],
+        });
+      } else {
+        // Chưa đăng nhập -> Auth
+        navigation.reset({
+          index: 0,
+          routes: [{ name: "SignInEmail" }],
+        });
+      }
+    } catch (error) {
+      console.error("Error finishing onboarding:", error);
+      Alert.alert("Lỗi", "Đã xảy ra lỗi. Vui lòng thử lại.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -152,9 +222,9 @@ export default function Onboarding2() {
       case 2:
         return (
           <View style={styles.center}>
-            <Text style={styles.title}>Any ingredient allergies?</Text>
+            <Text style={styles.title}>Bạn có dị ứng với nguyên liệu nào không?</Text>
             <Text style={styles.subtitle}>
-              Choose any ingredients you’re allergic to.
+              Chọn các nguyên liệu bạn bị dị ứng (có thể bỏ qua nếu không có)
             </Text>
             <View style={styles.grid}>
               {allergies.map((item) => (
@@ -190,8 +260,8 @@ export default function Onboarding2() {
       case 3:
         return (
           <View style={styles.center}>
-            <Text style={styles.title}>Do you follow any diets?</Text>
-            <Text style={styles.subtitle}>Pick one or more diet preferences.</Text>
+            <Text style={styles.title}>Bạn theo chế độ ăn nào?</Text>
+            <Text style={styles.subtitle}>Chọn một hoặc nhiều chế độ ăn (có thể bỏ qua)</Text>
             <View style={styles.grid}>
               {diets.map((item) => (
                 <TouchableOpacity
@@ -226,9 +296,9 @@ export default function Onboarding2() {
               source={require("../../assets/yummy.jpg")}
               style={styles.image}
             />
-            <Text style={styles.title}>You're all set! 🎉</Text>
+            <Text style={styles.title}>Hoàn tất! 🎉</Text>
             <Text style={styles.subtitle}>
-              Happy cooking and enjoy your meals!
+              Bạn đã sẵn sàng để bắt đầu nấu ăn cùng DailyCook!
             </Text>
           </View>
         );
@@ -256,33 +326,33 @@ export default function Onboarding2() {
       style={[styles.button, styles.buttonSecondary]}
       onPress={() => setStep(step - 1)}
     >
-      <Text style={styles.buttonTextSecondary}>Previous</Text>
+      <Text style={styles.buttonTextSecondary}>Quay lại</Text>
     </TouchableOpacity>
   )}
 
   {step === 1 && (
     <TouchableOpacity style={styles.button} onPress={() => setStep(step + 1)}>
-      <Text style={styles.buttonText}>Start Survey</Text>
+      <Text style={styles.buttonText}>Bắt đầu khảo sát</Text>
     </TouchableOpacity>
   )}
 
   {step > 1 && step < 4 && (
     <TouchableOpacity style={styles.button} onPress={() => setStep(step + 1)}>
-      <Text style={styles.buttonText}>Next</Text>
+      <Text style={styles.buttonText}>Tiếp theo</Text>
     </TouchableOpacity>
   )}
 
   {step === 4 && (
     <TouchableOpacity
       style={styles.button}
-      onPress={() =>
-        navigation.reset({
-          index: 0,
-          routes: [{ name: "Home" }],
-        })
-      }
+      onPress={handleFinish}
+      disabled={loading}
     >
-      <Text style={styles.buttonText}>Let's cook</Text>
+      {loading ? (
+        <ActivityIndicator color="#fff" />
+      ) : (
+        <Text style={styles.buttonText}>Bắt đầu nấu ăn 🍳</Text>
+      )}
     </TouchableOpacity>
   )}
 </View>

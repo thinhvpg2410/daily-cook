@@ -1,32 +1,44 @@
 import React, { useEffect, useRef } from "react";
 import { View, StyleSheet, Animated, Easing } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { hasCompletedOnboarding } from "../utils/onboarding";
 
 export default function LaunchScreen({ navigation }: any) {
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Scale + Fade in logo
-    Animated.parallel([
-      Animated.timing(scaleAnim, {
-        toValue: 1,
-        duration: 1000,
-        easing: Easing.out(Easing.exp),
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacityAnim, {
-        toValue: 1,
-        duration: 1200,
-        easing: Easing.out(Easing.exp),
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      // Sau khi animation xong thì chờ 1s rồi sang Onboarding
-      setTimeout(() => {
-        navigation.replace("Onboarding");
-      }, 1000);
-    });
+    const checkOnboarding = async () => {
+      // Scale + Fade in logo
+      Animated.parallel([
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 1000,
+          easing: Easing.out(Easing.exp),
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacityAnim, {
+          toValue: 1,
+          duration: 1200,
+          easing: Easing.out(Easing.exp),
+          useNativeDriver: true,
+        }),
+      ]).start(async () => {
+        // Sau khi animation xong thì chờ 1s rồi kiểm tra onboarding
+        setTimeout(async () => {
+          const completed = await hasCompletedOnboarding();
+          if (completed) {
+            // Đã hoàn thành onboarding -> chuyển sang Auth
+            navigation.replace("SignInEmail");
+          } else {
+            // Chưa hoàn thành -> chuyển sang Onboarding
+            navigation.replace("Onboarding");
+          }
+        }, 1000);
+      });
+    };
+
+    checkOnboarding();
   }, [navigation, scaleAnim, opacityAnim]);
 
   return (
