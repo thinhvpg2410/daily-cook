@@ -1,24 +1,44 @@
 import React, {useState} from "react";
-import {View, Text, TextInput, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert} from "react-native";
+import {View, Text, TextInput, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert, ActivityIndicator} from "react-native";
 import {Ionicons} from "@expo/vector-icons";
+import {changePasswordApi} from "../api/users";
 
 export default function ChangePasswordScreen({navigation}: any) {
     const [current, setCurrent] = useState("");
     const [newPass, setNewPass] = useState("");
     const [confirm, setConfirm] = useState("");
+    const [loading, setLoading] = useState(false);
 
-    const onChangePassword = () => {
+    const onChangePassword = async () => {
         if (!current || !newPass || !confirm) {
             Alert.alert("Lỗi", "Vui lòng nhập đầy đủ thông tin");
+            return;
+        }
+        if (newPass.length < 6) {
+            Alert.alert("Lỗi", "Mật khẩu mới phải có ít nhất 6 ký tự");
             return;
         }
         if (newPass !== confirm) {
             Alert.alert("Lỗi", "Mật khẩu xác nhận không khớp");
             return;
         }
-        // TODO: gọi API đổi mật khẩu
-        Alert.alert("Thành công", "Mật khẩu đã được thay đổi!");
-        navigation.goBack();
+
+        setLoading(true);
+        try {
+            await changePasswordApi({
+                oldPassword: current,
+                newPassword: newPass,
+            });
+            
+            Alert.alert("Thành công", "Mật khẩu đã được thay đổi!", [
+                { text: "OK", onPress: () => navigation.goBack() }
+            ]);
+        } catch (error: any) {
+            const errorMessage = error?.response?.data?.message || error?.message || "Đã xảy ra lỗi. Vui lòng thử lại.";
+            Alert.alert("Lỗi", errorMessage);
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -41,9 +61,19 @@ export default function ChangePasswordScreen({navigation}: any) {
                     <TextInput style={s.input} secureTextEntry value={confirm} onChangeText={setConfirm}/>
                 </View>
 
-                <TouchableOpacity style={s.saveBtn} onPress={onChangePassword}>
-                    <Ionicons name="key-outline" size={20} color="#fff"/>
-                    <Text style={s.saveBtnText}>Cập nhật mật khẩu</Text>
+                <TouchableOpacity 
+                    style={[s.saveBtn, loading && s.saveBtnDisabled]} 
+                    onPress={onChangePassword}
+                    disabled={loading}
+                >
+                    {loading ? (
+                        <ActivityIndicator color="#fff" />
+                    ) : (
+                        <>
+                            <Ionicons name="key-outline" size={20} color="#fff"/>
+                            <Text style={s.saveBtnText}>Cập nhật mật khẩu</Text>
+                        </>
+                    )}
                 </TouchableOpacity>
 
                 <TouchableOpacity style={s.cancelBtn} onPress={() => navigation.goBack()}>
@@ -78,6 +108,9 @@ const s = StyleSheet.create({
         alignItems: "center",
         justifyContent: "center",
         marginTop: 20
+    },
+    saveBtnDisabled: {
+        opacity: 0.6
     },
     saveBtnText: {color: "#fff", fontSize: 16, fontWeight: "600", marginLeft: 8},
     cancelBtn: {flexDirection: "row", alignItems: "center", justifyContent: "center", marginTop: 16},
