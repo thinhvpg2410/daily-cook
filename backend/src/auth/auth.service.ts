@@ -214,4 +214,82 @@ export class AuthService {
       },
     };
   }
+
+  // In-memory OTP storage (in production, use Redis or database with expiration)
+  private otpStore = new Map<string, { code: string; expiresAt: number }>();
+
+  async forgotPassword(email: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: email.trim().toLowerCase() },
+    });
+
+    if (!user) {
+      // Don't reveal if user exists for security
+      return { message: "Nếu email tồn tại, mã OTP đã được gửi" };
+    }
+
+    // Generate 6-digit OTP
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+    // Store OTP (keyed by email)
+    this.otpStore.set(email.toLowerCase(), { code, expiresAt });
+
+    // TODO: Send email with OTP
+    // For now, in development, we'll return the code
+    // In production, remove this and send via email service
+    console.log(`[DEV] OTP for ${email}: ${code}`);
+
+    return {
+      message: "Mã OTP đã được gửi đến email của bạn",
+      // Remove this in production
+      devCode: process.env.NODE_ENV === "development" ? code : undefined,
+    };
+  }
+
+  async verifyResetCode(email: string, code: string) {
+    const stored = this.otpStore.get(email.toLowerCase());
+    if (!stored) {
+      throw new BadRequestException("Mã OTP không hợp lệ hoặc đã hết hạn");
+    }
+
+    if (Date.now() > stored.expiresAt) {
+      this.otpStore.delete(email.toLowerCase());
+      throw new BadRequestException("Mã OTP đã hết hạn");
+    }
+
+    if (stored.code !== code) {
+      throw new BadRequestException("Mã OTP không đúng");
+    }
+
+    // Code is valid, return success
+    return { verified: true };
+  }
+
+  async resetPassword(email: string, code: string, newPassword: string) {
+    // Verify code first
+    await this.verifyResetCode(email, code);
+
+    const user = await this.prisma.user.findUnique({
+      where: { email: email.trim().toLowerCase() },
+    });
+
+    if (!user) {
+      throw new BadRequestException("User not found");
+    }
+
+    // Hash new password
+    const passwordHash = await argon2.hash(newPassword);
+
+    // Update password
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash },
+    });
+
+    // Remove OTP from store
+    this.otpStore.delete(email.toLowerCase());
+
+    return { message: "Mật khẩu đã được đặt lại thành công" };
+  }
 }
