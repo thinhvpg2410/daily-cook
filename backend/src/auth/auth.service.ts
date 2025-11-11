@@ -43,10 +43,65 @@ export class AuthService {
     return this.sign(user);
   }
 
-  async login(email: string, password: string, code?: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+  async login(username: string, password: string, code?: string) {
+    // username có thể là email hoặc phone
+    // Kiểm tra xem là email (có @) hay phone
+    const isEmail = username.includes("@");
+    
+    let user;
+    if (isEmail) {
+      // Tìm bằng email (trim và lowercase)
+      user = await this.prisma.user.findUnique({ 
+        where: { email: username.trim().toLowerCase() } 
+      });
+    } else {
+      // Tìm bằng phone
+      // Normalize phone: loại bỏ tất cả ký tự không phải số và dấu +
+      let phone = username.trim();
+      const hadPlusAtStart = phone.startsWith("+");
+      
+      // Loại bỏ tất cả ký tự đặc biệt (spaces, dashes, parentheses, etc.)
+      // Chỉ giữ lại số và dấu +
+      const cleaned = phone.replace(/[^\d\+]/g, "");
+      
+      // Xử lý dấu +: chỉ giữ một dấu + ở đầu
+      let normalizedPhone: string;
+      if (cleaned.includes("+")) {
+        // Có dấu + trong cleaned string
+        const digitsOnly = cleaned.replace(/\+/g, "");
+        normalizedPhone = hadPlusAtStart ? "+" + digitsOnly : digitsOnly;
+      } else {
+        // Không có dấu + trong cleaned string
+        normalizedPhone = hadPlusAtStart ? "+" + cleaned : cleaned;
+      }
+      
+      // Thử tìm user với các format khác nhau của phone
+      const phoneVariants: string[] = [];
+      
+      // Thêm normalized phone
+      phoneVariants.push(normalizedPhone);
+      
+      // Nếu có dấu +, thêm variant không có dấu +
+      if (normalizedPhone.startsWith("+")) {
+        phoneVariants.push(normalizedPhone.substring(1));
+      } else {
+        // Nếu không có dấu +, thêm variant có dấu +
+        phoneVariants.push("+" + normalizedPhone);
+      }
+      
+      // Loại bỏ duplicates
+      const uniqueVariants = Array.from(new Set(phoneVariants));
+      
+      // Tìm user với từng variant
+      for (const variant of uniqueVariants) {
+        user = await this.prisma.user.findUnique({ where: { phone: variant } });
+        if (user) break;
+      }
+    }
+
     if (!user || !user.passwordHash)
       throw new UnauthorizedException("Sai thông tin đăng nhập");
+    
     const ok = await argon2.verify(user.passwordHash, password);
     if (!ok) throw new UnauthorizedException("Sai thông tin đăng nhập");
 
