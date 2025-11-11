@@ -14,11 +14,11 @@ export type LoginResp =
     | { accessToken: string; user: UserDto };
 
 export async function loginApi(
-    email: string,
+    username: string, // Email hoặc số điện thoại
     password: string,
     twofaCode?: string
 ): Promise<LoginResp> {
-    const res = await http.post("/auth/login", {email, password, twofaCode});
+    const res = await http.post("/auth/login", {username, password, twofaCode});
     return res.data;
 }
 

@@ -11,7 +11,7 @@ type AuthCtx = {
     user: User | null;
     token: string | null;
     loading: boolean;
-    login: (email: string, password: string, twofaCode?: string) => Promise<void | {
+    login: (username: string, password: string, twofaCode?: string) => Promise<void | {
         requires2FA: true;
         tmpToken: string
     }>;
@@ -59,8 +59,8 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({children}) => {
         })();
     }, []);
 
-    const login: AuthCtx["login"] = async (email, password, twofaCode) => {
-        const res = await loginApi(email, password, twofaCode);
+    const login: AuthCtx["login"] = async (username, password, twofaCode) => {
+        const res = await loginApi(username, password, twofaCode);
         if ("requires2FA" in res) {
             return res; // UI sẽ hiển thị form nhập mã & gọi lại login với twofaCode
         }
