@@ -30,6 +30,7 @@ model User {
   foodLogs       FoodLog[]
   shoppingLists  ShoppingList[]
   aiLogs         AIRecommendationLog[]
+  favoriteRecipes UserFavoriteRecipe[]
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
 
@@ -88,6 +89,7 @@ model Recipe {
   authorId    String
   author      User         @relation(fields: [authorId], references: [id])
   items       RecipeItem[]
+  favorites   UserFavoriteRecipe[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -157,4 +159,17 @@ model AIRecommendationLog {
   durationMs Int? // thời gian xử lý
   feedback   String? // user feedback ("good", "too salty", etc.)
   createdAt  DateTime @default(now())
+}
+
+model UserFavoriteRecipe {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipeId  String
+  recipe    Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, recipeId])
+  @@index([userId])
+  @@index([recipeId])
 }
