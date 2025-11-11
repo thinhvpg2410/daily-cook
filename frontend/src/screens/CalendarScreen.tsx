@@ -1,75 +1,199 @@
 // src/screens/CalendarScreen.tsx
-import React, { useState } from "react";
-import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Image } from "react-native";
+import React, { useState, useEffect } from "react";
+import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Image, ActivityIndicator } from "react-native";
 import { Calendar } from "react-native-calendars";
 import TabBar from "./TabBar";
+import { useAuth } from "../context/AuthContext";
+import { getMealPlansApi, getTodaySuggestApi } from "../api/mealplan";
+import { http } from "../api/http";
+
+const PLACEHOLDER_IMG = "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?q=80&w=1200&auto=format&fit=crop";
+
+function normalizeImage(src?: string | null) {
+  if (!src || typeof src !== "string" || !src.trim()) return PLACEHOLDER_IMG;
+  if (/^https?:\/\//i.test(src)) return src;
+  if (src.startsWith("/")) return `http://localhost:3000${src}`;
+  return src;
+}
 
 export default function CalendarScreen({ navigation }: any) {
+  const { token } = useAuth();
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [loading, setLoading] = useState(false);
+  const [mealData, setMealData] = useState<Record<string, { breakfast: any[]; lunch: any[]; dinner: any[] }>>({});
 
-  // Dữ liệu đồng bộ với Home/Category/Details
-  const mealData: Record<string, { breakfast: any[]; lunch: any[]; dinner: any[] }> = {
-    "2025-10-03": {
-      breakfast: [
-        { title: "Pancake & Cream", image: "https://heavenlyhomecooking.com/wp-content/uploads/2022/06/Sweet-Cream-Pancakes-Recipe-Featured-500x500.jpg", time: "20min", likes: 2273 },
-        { title: "Omelette", image: "https://ichef.bbci.co.uk/food/ic/food_16x9_1600/recipes/cheeseomelette_80621_16x9.jpg", time: "10min", likes: 421 }
-      ],
-      lunch: [
-        { title: "Grilled Chicken", image: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQBY_OVOu1ROZ9DPPdXQdcWDha6nGNTF21BEA&s", time: "35min", likes: 654 }
-      ],
-      dinner: [
-        { title: "Beef Steak", image: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTFrW4AbObw9q8EZFHMCp830r40YXfVt27fjQ&s", time: "40min", likes: 320 }
-      ]
-    },
-    "2025-10-04": {
-      breakfast: [
-        { title: "Tiramisu", image: "https://daotaobeptruong.vn/wp-content/uploads/2020/11/banh-tiramisu.jpg", time: "15min", likes: 5 }
-      ],
-      lunch: [],
-      dinner: [
-        { title: "Lemonade", image: "https://herbsandflour.com/wp-content/uploads/2020/05/Homemade-Lemonade-Recipe.jpg", time: "30min", likes: 4 },
-        { title: "Taco", image: "https://mojo.generalmills.com/api/public/content/GmHhoT5mr0Sue2oMxdyEig_webp_base.webp?v=c67813e4&t=191ddcab8d1c415fa10fa00a14351227", time: "25min", likes: 3 }
-      ]
+  const fetchMealPlans = async (startDate: string, endDate: string) => {
+    if (!token) return;
+    
+    setLoading(true);
+    try {
+      const startOfWeek = new Date(startDate);
+      startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay() + 1); // Monday
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(endOfWeek.getDate() + 6); // Sunday
+
+      const res = await getMealPlansApi({
+        start: startOfWeek.toISOString().split("T")[0],
+        end: endOfWeek.toISOString().split("T")[0],
+      });
+
+      const plans = res.data || [];
+      const data: Record<string, { breakfast: any[]; lunch: any[]; dinner: any[] }> = {};
+
+      for (const plan of plans) {
+        const date = plan.date;
+        const slots = plan.slots || {};
+        
+        const breakfastIds = slots.breakfast || [];
+        const lunchIds = slots.lunch || [];
+        const dinnerIds = slots.dinner || [];
+
+        // Fetch recipe details
+        const allIds = [...breakfastIds, ...lunchIds, ...dinnerIds];
+        if (allIds.length > 0) {
+          const recipes = await Promise.all(
+            allIds.map(async (id: string) => {
+              try {
+                const recipeRes = await http.get(`/recipes/${id}`);
+                return recipeRes.data;
+              } catch {
+                return null;
+              }
+            })
+          );
+
+          const validRecipes = recipes.filter(Boolean);
+          data[date] = {
+            breakfast: validRecipes
+              .filter((r: any) => breakfastIds.includes(r.id))
+              .map((r: any) => ({
+                id: r.id,
+                title: r.title,
+                image: normalizeImage(r.image),
+                time: `${r.cookTime ?? 30}min`,
+                likes: r.likes ?? 0,
+              })),
+            lunch: validRecipes
+              .filter((r: any) => lunchIds.includes(r.id))
+              .map((r: any) => ({
+                id: r.id,
+                title: r.title,
+                image: normalizeImage(r.image),
+                time: `${r.cookTime ?? 30}min`,
+                likes: r.likes ?? 0,
+              })),
+            dinner: validRecipes
+              .filter((r: any) => dinnerIds.includes(r.id))
+              .map((r: any) => ({
+                id: r.id,
+                title: r.title,
+                image: normalizeImage(r.image),
+                time: `${r.cookTime ?? 30}min`,
+                likes: r.likes ?? 0,
+              })),
+          };
+        } else {
+          data[date] = { breakfast: [], lunch: [], dinner: [] };
+        }
+      }
+
+      setMealData(data);
+    } catch (error) {
+      console.error("Error fetching meal plans:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
+  useEffect(() => {
+    if (token) {
+      // Fetch for the whole month to show all meal plans
+      const date = new Date(selectedDate);
+      const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+      const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+      fetchMealPlans(
+        startOfMonth.toISOString().split("T")[0],
+        endOfMonth.toISOString().split("T")[0]
+      );
+    }
+  }, [selectedDate, token]);
+
   const meals = mealData[selectedDate] || { breakfast: [], lunch: [], dinner: [] };
+
+  const handleDateChange = (day: any) => {
+    setSelectedDate(day.dateString);
+  };
+
+  // Mark dates that have meal plans
+  const markedDates: any = {
+    [selectedDate]: { selected: true, selectedColor: "#f77" },
+  };
+  
+  Object.keys(mealData).forEach((date) => {
+    const meals = mealData[date];
+    const hasMeals = meals.breakfast.length > 0 || meals.lunch.length > 0 || meals.dinner.length > 0;
+    if (hasMeals && date !== selectedDate) {
+      markedDates[date] = { marked: true, dotColor: "#f77" };
+    }
+  });
 
   return (
     <SafeAreaView style={s.safe}>
       <ScrollView showsVerticalScrollIndicator={false} style={s.container}>
-        <Text style={s.title}>Meal Planner</Text>
+        <Text style={s.title}>Lịch Thực Đơn</Text>
 
         {/* Calendar */}
         <Calendar
-          onDayPress={(day) => setSelectedDate(day.dateString)}
-          markedDates={{ [selectedDate]: { selected: true, selectedColor: "#f77" } }}
+          onDayPress={handleDateChange}
+          markedDates={markedDates}
           style={{ borderRadius: 12, marginBottom: 16 }}
+          theme={{
+            selectedDayBackgroundColor: "#f77",
+            selectedDayTextColor: "#fff",
+            todayTextColor: "#f77",
+            arrowColor: "#f77",
+          }}
         />
 
-        {/* Meals */}
-        {(["breakfast", "lunch", "dinner"] as const).map((mealType) => (
-          <View key={mealType} style={{ marginBottom: 16 }}>
-            <Text style={s.mealTitle}>{mealType.toUpperCase()}</Text>
-            {meals[mealType].length === 0 ? (
-              <Text style={s.noMeal}>No meal planned</Text>
-            ) : (
-              meals[mealType].map((dish, idx) => (
-                <TouchableOpacity
-                  key={idx}
-                  style={s.dishCard}
-                  onPress={() => navigation.navigate("Details", { item: dish })}
-                >
-                  <Image source={{ uri: dish.image }} style={s.dishImage} />
-                  <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={s.dishTitle}>{dish.title}</Text>
-                    <Text style={s.dishTime}>{dish.time}</Text>
-                  </View>
-                </TouchableOpacity>
-              ))
-            )}
+        {loading ? (
+          <View style={{ padding: 20, alignItems: "center" }}>
+            <ActivityIndicator size="large" color="#f77" />
           </View>
-        ))}
+        ) : (
+          <>
+            {/* Meals */}
+            {(["breakfast", "lunch", "dinner"] as const).map((mealType) => (
+              <View key={mealType} style={{ marginBottom: 16 }}>
+                <Text style={s.mealTitle}>
+                  {mealType === "breakfast" ? "Bữa Sáng" : mealType === "lunch" ? "Bữa Trưa" : "Bữa Tối"}
+                </Text>
+                {meals[mealType].length === 0 ? (
+                  <Text style={s.noMeal}>Chưa có món ăn nào được lên kế hoạch</Text>
+                ) : (
+                  meals[mealType].map((dish, idx) => (
+                    <TouchableOpacity
+                      key={dish.id || idx}
+                      style={s.dishCard}
+                      onPress={() => navigation.navigate("Details", { item: dish })}
+                    >
+                      <Image source={{ uri: dish.image }} style={s.dishImage} />
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={s.dishTitle}>{dish.title}</Text>
+                        <Text style={s.dishTime}>{dish.time}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                )}
+              </View>
+            ))}
+
+            {!token && (
+              <View style={{ padding: 20, alignItems: "center" }}>
+                <Text style={{ color: "#777" }}>Vui lòng đăng nhập để xem lịch thực đơn</Text>
+              </View>
+            )}
+          </>
+        )}
       </ScrollView>
 
       <View style={{ marginBottom: 50 }}><TabBar /></View>

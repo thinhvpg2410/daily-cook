@@ -7,6 +7,7 @@ import {Ionicons} from "@expo/vector-icons";
 import TabBar from "./TabBar";
 import {useAuth} from "../context/AuthContext";
 import {http} from "../api/http";
+import {getTodaySuggestApi, upsertMealPlanApi} from "../api/mealplan";
 
 const {width} = Dimensions.get("window");
 
@@ -55,6 +56,8 @@ export default function HomeScreen({navigation}: any) {
     const {user, token} = useAuth()
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [todaySuggestLoading, setTodaySuggestLoading] = useState(false);
+    const [todaySuggest, setTodaySuggest] = useState<any>(null);
 
     const [trending, setTrending] = useState<UiCard[]>([]);
     const [yourRecipes, setYourRecipes] = useState<UiCard[]>([]);
@@ -130,8 +133,46 @@ export default function HomeScreen({navigation}: any) {
             setLoading(false);
         }
     };
+    const fetchTodaySuggest = async () => {
+        if (!token) return;
+        setTodaySuggestLoading(true);
+        try {
+            const res = await getTodaySuggestApi();
+            setTodaySuggest(res.data);
+        } catch (error) {
+            console.error("Error fetching today's suggestion:", error);
+        } finally {
+            setTodaySuggestLoading(false);
+        }
+    };
+
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    const acceptTodaySuggest = async () => {
+        if (!todaySuggest || !token) return;
+        try {
+            await upsertMealPlanApi({
+                date: todayStr,
+                slots: {
+                    breakfast: todaySuggest.breakfast?.map((r: any) => r.id) || [],
+                    lunch: todaySuggest.lunch?.map((r: any) => r.id) || [],
+                    dinner: todaySuggest.dinner?.map((r: any) => r.id) || [],
+                },
+            });
+            // Refresh today's suggest to show it's now saved
+            await fetchTodaySuggest();
+            // Shopping list will be automatically updated when user visits ShoppingListScreen
+            // because it fetches from the date range which includes today
+        } catch (error) {
+            console.error("Error accepting suggestion:", error);
+        }
+    };
+
     useEffect(() => {
         fetchAll();
+        if (token) {
+            fetchTodaySuggest();
+        }
     }, [token]);
 
     const onRefresh = async () => {
@@ -191,16 +232,139 @@ export default function HomeScreen({navigation}: any) {
                 {/* Header */}
                 <View style={s.header}>
                     <View>
-                        <Text style={s.title}>Hi{user?.name ? `! ${user.name}` : "!"}</Text>
-                        <Text style={s.subtitle}>What are you cooking today</Text>
+                        <Text style={s.title}>Xin chào{user?.name ? `, ${user.name}` : "!"}</Text>
+                        <Text style={s.subtitle}>Hôm nay nấu gì nhỉ? 👨‍🍳</Text>
                     </View>
                     <View style={s.iconRow}>
-                        <TouchableOpacity style={s.iconBtn}><Ionicons name="notifications-outline" size={20}
-                                                                      color="#f77"/></TouchableOpacity>
-                        <TouchableOpacity style={s.iconBtn}><Ionicons name="cart-outline" size={20}
-                                                                      color="#f77"/></TouchableOpacity>
+                        <TouchableOpacity 
+                            style={s.iconBtn}
+                            onPress={() => navigation.navigate("ShoppingList")}
+                        >
+                            <Ionicons name="cart-outline" size={20} color="#f77"/>
+                        </TouchableOpacity>
                     </View>
                 </View>
+
+                {/* Today's Suggestion Card */}
+                {token && (
+                    <View style={s.todayCard}>
+                        <View style={s.todayCardHeader}>
+                            <View>
+                                <Text style={s.todayCardTitle}>✨ Gợi ý hôm nay</Text>
+                                <Text style={s.todayCardSubtitle}>
+                                    {todaySuggest?.hasPlan 
+                                        ? "Bạn đã có kế hoạch cho hôm nay" 
+                                        : "Hệ thống gợi ý món ăn cho bạn"}
+                                </Text>
+                            </View>
+                            {todaySuggestLoading && (
+                                <ActivityIndicator size="small" color="#f77" />
+                            )}
+                        </View>
+                        
+                        {todaySuggest && !todaySuggestLoading && (
+                            <>
+                                {(todaySuggest.breakfast?.length > 0 || 
+                                  todaySuggest.lunch?.length > 0 || 
+                                  todaySuggest.dinner?.length > 0) && (
+                                    <View style={s.todayMeals}>
+                                        {todaySuggest.breakfast?.length > 0 && (
+                                            <View style={s.todayMealSlot}>
+                                                <Text style={s.todayMealLabel}>🌅 Bữa sáng</Text>
+                                                <FlatList
+                                                    horizontal
+                                                    data={todaySuggest.breakfast}
+                                                    keyExtractor={(item) => item.id}
+                                                    renderItem={({item}) => (
+                                                        <TouchableOpacity
+                                                            style={s.todayMealItem}
+                                                            onPress={() => navigation.navigate("Details", {item})}
+                                                        >
+                                                            <Image 
+                                                                source={{uri: normalizeImage(item.image)}} 
+                                                                style={s.todayMealImage}
+                                                            />
+                                                            <Text style={s.todayMealTitle} numberOfLines={1}>
+                                                                {item.title}
+                                                            </Text>
+                                                        </TouchableOpacity>
+                                                    )}
+                                                />
+                                            </View>
+                                        )}
+                                        {todaySuggest.lunch?.length > 0 && (
+                                            <View style={s.todayMealSlot}>
+                                                <Text style={s.todayMealLabel}>🌆 Bữa trưa</Text>
+                                                <FlatList
+                                                    horizontal
+                                                    data={todaySuggest.lunch}
+                                                    keyExtractor={(item) => item.id}
+                                                    renderItem={({item}) => (
+                                                        <TouchableOpacity
+                                                            style={s.todayMealItem}
+                                                            onPress={() => navigation.navigate("Details", {item})}
+                                                        >
+                                                            <Image 
+                                                                source={{uri: normalizeImage(item.image)}} 
+                                                                style={s.todayMealImage}
+                                                            />
+                                                            <Text style={s.todayMealTitle} numberOfLines={1}>
+                                                                {item.title}
+                                                            </Text>
+                                                        </TouchableOpacity>
+                                                    )}
+                                                />
+                                            </View>
+                                        )}
+                                        {todaySuggest.dinner?.length > 0 && (
+                                            <View style={s.todayMealSlot}>
+                                                <Text style={s.todayMealLabel}>🌙 Bữa tối</Text>
+                                                <FlatList
+                                                    horizontal
+                                                    data={todaySuggest.dinner}
+                                                    keyExtractor={(item) => item.id}
+                                                    renderItem={({item}) => (
+                                                        <TouchableOpacity
+                                                            style={s.todayMealItem}
+                                                            onPress={() => navigation.navigate("Details", {item})}
+                                                        >
+                                                            <Image 
+                                                                source={{uri: normalizeImage(item.image)}} 
+                                                                style={s.todayMealImage}
+                                                            />
+                                                            <Text style={s.todayMealTitle} numberOfLines={1}>
+                                                                {item.title}
+                                                            </Text>
+                                                        </TouchableOpacity>
+                                                    )}
+                                                />
+                                            </View>
+                                        )}
+                                        {todaySuggest.totalKcal && (
+                                            <Text style={s.todayKcal}>
+                                                🔥 Tổng: ~{Math.round(todaySuggest.totalKcal)} kcal
+                                            </Text>
+                                        )}
+                                    </View>
+                                )}
+                                {!todaySuggest.hasPlan && (
+                                    <TouchableOpacity 
+                                        style={s.acceptButton}
+                                        onPress={acceptTodaySuggest}
+                                    >
+                                        <Text style={s.acceptButtonText}>✅ Chấp nhận gợi ý</Text>
+                                    </TouchableOpacity>
+                                )}
+                                <TouchableOpacity 
+                                    style={s.suggestButton}
+                                    onPress={() => navigation.navigate("MealSuggest")}
+                                >
+                                    <Text style={s.suggestButtonText}>🎲 Gợi ý khác</Text>
+                                </TouchableOpacity>
+                            </>
+                        )}
+                    </View>
+                )}
 
                 {/* Categories → scroll ngang */}
                 <FlatList
@@ -220,7 +384,7 @@ export default function HomeScreen({navigation}: any) {
                 />
 
                 {/* Trending */}
-                <Text style={s.sectionTitle}>Trending Recipe</Text>
+                <Text style={s.sectionTitle}>🔥 Món ăn phổ biến</Text>
                 <FlatList
                     horizontal
                     data={trending}
@@ -231,7 +395,7 @@ export default function HomeScreen({navigation}: any) {
 
                 {/* Your Recipes */}
                 <View style={s.sectionBox}>
-                    <Text style={s.sectionTitleWhite}>Your Recipes</Text>
+                    <Text style={s.sectionTitleWhite}>📚 Món ăn của bạn</Text>
                     <FlatList
                         horizontal
                         data={yourRecipes}
@@ -242,7 +406,7 @@ export default function HomeScreen({navigation}: any) {
                 </View>
 
                 {/* Recently Added */}
-                <Text style={s.sectionTitle}>Recently Added</Text>
+                <Text style={s.sectionTitle}>🆕 Món mới thêm</Text>
                 <View style={s.grid}>
                     {recentlyAdded.map((i) => <SmallCard key={i.id} item={i}/>)}
                 </View>
@@ -263,6 +427,73 @@ const s = StyleSheet.create({
     subtitle: {fontSize: 14, color: "#555"},
     iconRow: {flexDirection: "row"},
     iconBtn: {backgroundColor: "#ffeef0", padding: 8, borderRadius: 20, marginLeft: 8},
+    todayCard: {
+        backgroundColor: "#fff5f7",
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 16,
+        borderWidth: 2,
+        borderColor: "#f77",
+    },
+    todayCardHeader: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 12,
+    },
+    todayCardTitle: {fontSize: 18, fontWeight: "bold", color: "#f77", marginBottom: 4},
+    todayCardSubtitle: {fontSize: 12, color: "#777"},
+    todayMeals: {marginBottom: 12},
+    todayMealSlot: {marginBottom: 12},
+    todayMealLabel: {fontSize: 14, fontWeight: "600", color: "#333", marginBottom: 8},
+    todayMealItem: {
+        backgroundColor: "#fff",
+        borderRadius: 12,
+        marginRight: 12,
+        width: 120,
+        overflow: "hidden",
+        elevation: 2,
+    },
+    todayMealImage: {width: 120, height: 80},
+    todayMealTitle: {
+        fontSize: 12,
+        fontWeight: "600",
+        color: "#333",
+        padding: 8,
+        textAlign: "center",
+    },
+    todayKcal: {
+        fontSize: 12,
+        color: "#777",
+        textAlign: "center",
+        marginTop: 8,
+        fontStyle: "italic",
+    },
+    acceptButton: {
+        backgroundColor: "#f77",
+        paddingVertical: 12,
+        borderRadius: 10,
+        alignItems: "center",
+        marginBottom: 8,
+    },
+    acceptButtonText: {
+        color: "#fff",
+        fontWeight: "600",
+        fontSize: 14,
+    },
+    suggestButton: {
+        backgroundColor: "#fff",
+        paddingVertical: 12,
+        borderRadius: 10,
+        alignItems: "center",
+        borderWidth: 1,
+        borderColor: "#f77",
+    },
+    suggestButtonText: {
+        color: "#f77",
+        fontWeight: "600",
+        fontSize: 14,
+    },
     catBtn: {
         paddingHorizontal: 14,
         paddingVertical: 6,

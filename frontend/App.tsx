@@ -23,6 +23,7 @@ import DetailsScreen from "./src/screens/DetailsScreen";
 import ProfileScreen from "./src/screens/ProfileScreen";
 import CalendarScreen from "./src/screens/CalendarScreen";
 import MealSuggestScreen from "./src/screens/MealSuggestScreen";
+import CookingScreen from "./src/screens/CookingScreen";
 
 //Profile
 import ShoppingListScreen from "./src/screens/ShoppingListScreen";
@@ -93,6 +94,7 @@ function RootNavigator() {
                     <Stack.Screen name="Home" component={HomeScreen}/>
                     <Stack.Screen name="Category" component={CategoryScreen}/>
                     <Stack.Screen name="Details" component={DetailsScreen}/>
+                    <Stack.Screen name="Cooking" component={CookingScreen}/>
                     <Stack.Screen name="Profile" component={ProfileScreen}/>
                     <Stack.Screen name="Calendar" component={CalendarScreen}/>
                     <Stack.Screen name="MealPlan" component={MealSuggestScreen}/>
@@ -108,6 +110,7 @@ function RootNavigator() {
                 <Stack.Screen name="Home" component={HomeScreen}/>
                 <Stack.Screen name="Category" component={CategoryScreen}/>
                 <Stack.Screen name="Details" component={DetailsScreen}/>
+                <Stack.Screen name="Cooking" component={CookingScreen}/>
                 <Stack.Screen name="Profile" component={ProfileScreen}/>
                 <Stack.Screen name="Calendar" component={CalendarScreen}/>
                 <Stack.Screen name="MealPlan" component={MealSuggestScreen}/>
