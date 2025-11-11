@@ -20,15 +20,8 @@ export class CreateRecipeDto {
       { ingredientId: 'ing-1', amount: 500, unitOverride: 'gram' },
       { ingredientId: 'ing-2', amount: 2, unitOverride: 'liters' }
     ],
-    type: 'array',
-    items: {
-      type: 'object',
-      properties: {
-        ingredientId: { type: 'string' },
-        amount: { type: 'number' },
-        unitOverride: { type: 'string', required: false }
-      }
-    }
+    type: [Object],
+    isArray: true
   })
   @IsArray() items: {
     ingredientId: string;

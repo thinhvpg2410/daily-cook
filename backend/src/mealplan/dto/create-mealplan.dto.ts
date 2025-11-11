@@ -9,8 +9,7 @@ export class CreateMealPlanDto {
   @ApiProperty({ 
     description: 'Các slot bữa ăn', 
     example: { breakfast: ['recipe-id-1'], lunch: ['recipe-id-2'], dinner: ['recipe-id-3'] },
-    type: 'object',
-    additionalProperties: { type: 'array', items: { type: 'string' } }
+    type: Object
   })
   slots: Record<string, string[]>;
   
