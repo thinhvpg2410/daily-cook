@@ -484,4 +484,225 @@ export class MealPlanService {
       dishes: result,
     };
   }
+
+  async getTodaySuggest(userId: string, slot?: string) {
+    const today = startOfDay(new Date());
+    const todayStr = formatISO(today, { representation: "date" });
+
+    // Kiểm tra xem đã có meal plan cho hôm nay chưa
+    const existingPlan = await this.prisma.mealPlan.findFirst({
+      where: { userId, date: today },
+    });
+
+    if (existingPlan) {
+      const slots = this.normalizeSlots(existingPlan.slots as any);
+      const recipeIds = [
+        ...(slots.breakfast ?? []),
+        ...(slots.lunch ?? []),
+        ...(slots.dinner ?? []),
+      ];
+
+      if (recipeIds.length > 0) {
+        const recipes = await this.prisma.recipe.findMany({
+          where: { id: { in: recipeIds } },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            image: true,
+            cookTime: true,
+            likes: true,
+            tags: true,
+            totalKcal: true,
+            region: true,
+          },
+        });
+
+        const breakfastRecipes = recipes.filter((r) =>
+          slots.breakfast?.includes(r.id),
+        );
+        const lunchRecipes = recipes.filter((r) =>
+          slots.lunch?.includes(r.id),
+        );
+        const dinnerRecipes = recipes.filter((r) =>
+          slots.dinner?.includes(r.id),
+        );
+
+        return {
+          date: todayStr,
+          hasPlan: true,
+          breakfast: breakfastRecipes,
+          lunch: lunchRecipes,
+          dinner: dinnerRecipes,
+          totalKcal:
+            breakfastRecipes.reduce((s, r) => s + (r.totalKcal ?? 0), 0) +
+            lunchRecipes.reduce((s, r) => s + (r.totalKcal ?? 0), 0) +
+            dinnerRecipes.reduce((s, r) => s + (r.totalKcal ?? 0), 0),
+        };
+      }
+    }
+
+    // Nếu chưa có plan, tạo gợi ý thông minh
+    const pref = await this.prisma.userPreference.findUnique({
+      where: { userId },
+    });
+
+    // Lấy lịch sử meal plans gần đây để tránh lặp lại
+    const recentPlans = await this.prisma.mealPlan.findMany({
+      where: {
+        userId,
+        date: { gte: addDays(today, -7), lt: today },
+      },
+      take: 7,
+    });
+
+    const recentRecipeIds = new Set<string>();
+    recentPlans.forEach((p) => {
+      const s = this.normalizeSlots(p.slots as any);
+      (s.breakfast ?? []).forEach((id) => recentRecipeIds.add(id));
+      (s.lunch ?? []).forEach((id) => recentRecipeIds.add(id));
+      (s.dinner ?? []).forEach((id) => recentRecipeIds.add(id));
+    });
+
+    // Lấy user preferences
+    const region = pref?.likedTags?.find((t) =>
+      ["Northern", "Central", "Southern"].includes(t),
+    );
+    const dietType = pref?.dietType ?? "normal";
+    const dislikedIngredients = pref?.dislikedIngredients ?? [];
+
+    // Tạo gợi ý cho từng bữa ăn
+    const suggestForSlot = async (
+      slotType: "breakfast" | "lunch" | "dinner",
+    ) => {
+      const tags =
+        slotType === "breakfast"
+          ? ["Breakfast", "Veggie", "Soup"]
+          : slotType === "lunch"
+            ? ["RiceSide", "Grilled", "Stew", "Soup"]
+            : ["RiceSide", "Grilled", "Stew", "Soup", "Veggie"];
+
+      let where: any = {
+        tags: { hasSome: tags },
+      };
+
+      // Chỉ thêm notIn nếu có recent recipes để tránh
+      if (recentRecipeIds.size > 0) {
+        where.id = { notIn: Array.from(recentRecipeIds) };
+      }
+
+      if (region) where.region = region;
+      if (dietType === "vegan") where.tags = { hasSome: [...tags, "Vegan"] };
+      if (dietType === "low_carb") where.tags = { hasSome: [...tags, "LowCarb"] };
+
+      const candidates = await this.prisma.recipe.findMany({
+        where,
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          image: true,
+          cookTime: true,
+          likes: true,
+          tags: true,
+          totalKcal: true,
+          region: true,
+        },
+        orderBy: [{ likes: "desc" }, { createdAt: "desc" }],
+        take: 20,
+      });
+
+      // Lọc bỏ các món có ingredient không thích
+      const filtered = candidates.filter((r) => {
+        // Nếu có disliked ingredients, cần check trong recipe items
+        // Tạm thời chỉ filter bằng title/description
+        if (dislikedIngredients.length === 0) return true;
+        const titleDesc = `${r.title} ${r.description || ""}`.toLowerCase();
+        return !dislikedIngredients.some((ing) =>
+          titleDesc.includes(ing.toLowerCase()),
+        );
+      });
+
+      // Chọn ngẫu nhiên 1-2 món
+      const shuffled = shuffle([...filtered]);
+      return shuffled.slice(0, slotType === "breakfast" ? 1 : 2);
+    };
+
+    const breakfast = await suggestForSlot("breakfast");
+    const lunch = await suggestForSlot("lunch");
+    const dinner = await suggestForSlot("dinner");
+
+    const allRecipeIds = [
+      ...breakfast.map((r) => r.id),
+      ...lunch.map((r) => r.id),
+      ...dinner.map((r) => r.id),
+    ];
+
+    const totalKcal =
+      breakfast.reduce((s, r) => s + (r.totalKcal ?? 0), 0) +
+      lunch.reduce((s, r) => s + (r.totalKcal ?? 0), 0) +
+      dinner.reduce((s, r) => s + (r.totalKcal ?? 0), 0);
+
+    // Log recommendation to AI log
+    await this.prisma.aIRecommendationLog.create({
+      data: {
+        userId,
+        input: {
+          date: todayStr,
+          slot: slot || "all",
+          region,
+          dietType,
+          hasRecentHistory: recentPlans.length > 0,
+        },
+        output: {
+          breakfast: breakfast.map((r) => r.id),
+          lunch: lunch.map((r) => r.id),
+          dinner: dinner.map((r) => r.id),
+          totalKcal,
+        },
+        modelName: "DailyCook-v1",
+      },
+    });
+
+    // Nếu chỉ request một slot cụ thể
+    if (slot === "breakfast") {
+      return {
+        date: todayStr,
+        hasPlan: false,
+        breakfast,
+        lunch: [],
+        dinner: [],
+        totalKcal: breakfast.reduce((s, r) => s + (r.totalKcal ?? 0), 0),
+      };
+    }
+    if (slot === "lunch") {
+      return {
+        date: todayStr,
+        hasPlan: false,
+        breakfast: [],
+        lunch,
+        dinner: [],
+        totalKcal: lunch.reduce((s, r) => s + (r.totalKcal ?? 0), 0),
+      };
+    }
+    if (slot === "dinner") {
+      return {
+        date: todayStr,
+        hasPlan: false,
+        breakfast: [],
+        lunch: [],
+        dinner,
+        totalKcal: dinner.reduce((s, r) => s + (r.totalKcal ?? 0), 0),
+      };
+    }
+
+    return {
+      date: todayStr,
+      hasPlan: false,
+      breakfast,
+      lunch,
+      dinner,
+      totalKcal,
+    };
+  }
 }

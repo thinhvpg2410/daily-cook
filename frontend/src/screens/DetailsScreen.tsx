@@ -34,7 +34,7 @@ type RecipeDetail = {
   protein?: number | null;
   carbs?: number | null;
   fat?: number | null;
-  steps?: string[];
+  steps?: string[] | any; // Can be JSON array or string array
   items?: {
     amount: number;
     unitOverride?: string | null;
@@ -53,6 +53,15 @@ export default function DetailsScreen({ route, navigation }: any) {
       try {
         const res = await http.get(`/recipes/${item.id}`);
         const r = res.data as RecipeDetail;
+        // Parse steps if it's a JSON string
+        if (r.steps && typeof r.steps === 'string') {
+          try {
+            r.steps = JSON.parse(r.steps);
+          } catch (e) {
+            // If parsing fails, treat as single step
+            r.steps = [r.steps];
+          }
+        }
         setDetail(r);
       } catch (e) {
         console.warn("Fetch recipe detail failed:", e);
@@ -67,6 +76,7 @@ export default function DetailsScreen({ route, navigation }: any) {
           protein: 25,
           carbs: 15,
           fat: 10,
+          steps: [],
         });
       } finally {
         setLoading(false);
@@ -200,6 +210,34 @@ export default function DetailsScreen({ route, navigation }: any) {
             ))
           )}
         </View>
+
+        {/* Cooking Steps */}
+        {detail?.steps && Array.isArray(detail.steps) && detail.steps.length > 0 && (
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>Cooking Steps</Text>
+            {detail.steps.map((step: string, idx: number) => (
+              <View key={idx} style={s.stepItem}>
+                <View style={s.stepNumber}>
+                  <Text style={s.stepNumberText}>{idx + 1}</Text>
+                </View>
+                <Text style={s.stepText}>{step}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Start Cooking Button */}
+        {detail && (
+          <View style={s.buttonSection}>
+            <TouchableOpacity
+              style={s.startCookingBtn}
+              onPress={() => navigation.navigate("Cooking", { recipe: detail })}
+            >
+              <Ionicons name="play-circle" size={24} color="#fff" />
+              <Text style={s.startCookingText}>Bắt đầu nấu</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
 
       <View style={{ marginBottom: 50 }}>
@@ -286,4 +324,54 @@ const s = StyleSheet.create({
   macroItem: { alignItems: "center" },
   macroLabel: { fontSize: 13, color: "#777" },
   macroValue: { fontSize: 15, fontWeight: "600", color: "#333" },
+
+  stepItem: {
+    flexDirection: "row",
+    marginVertical: 8,
+    alignItems: "flex-start",
+  },
+  stepNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#f77",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+    flexShrink: 0,
+  },
+  stepNumberText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  stepText: {
+    flex: 1,
+    fontSize: 14,
+    color: "#555",
+    lineHeight: 20,
+  },
+
+  buttonSection: {
+    padding: 16,
+    paddingBottom: 24,
+  },
+  startCookingBtn: {
+    backgroundColor: "#e53935",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+    borderRadius: 25,
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  startCookingText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+    marginLeft: 8,
+  },
 });

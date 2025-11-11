@@ -1,6 +1,8 @@
 import React, {createContext, useContext, useEffect, useMemo, useState} from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {loginApi, registerApi, meApi} from "../api/auth";
+import {updatePreferencesApi} from "../api/users";
+import {getPendingPreferences, clearPendingPreferences} from "../utils/onboarding";
 
 
 type User = { id: string; email: string; name?: string; phone?: string };
@@ -9,7 +11,7 @@ type AuthCtx = {
     user: User | null;
     token: string | null;
     loading: boolean;
-    login: (email: string, password: string, twofaCode?: string) => Promise<void | {
+    login: (username: string, password: string, twofaCode?: string) => Promise<void | {
         requires2FA: true;
         tmpToken: string
     }>;
@@ -57,14 +59,25 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({children}) => {
         })();
     }, []);
 
-    const login: AuthCtx["login"] = async (email, password, twofaCode) => {
-        const res = await loginApi(email, password, twofaCode);
+    const login: AuthCtx["login"] = async (username, password, twofaCode) => {
+        const res = await loginApi(username, password, twofaCode);
         if ("requires2FA" in res) {
             return res; // UI sẽ hiển thị form nhập mã & gọi lại login với twofaCode
         }
         await AsyncStorage.setItem("token", res.accessToken);
         setToken(res.accessToken);
         setUser({id: res.user.id, email: res.user.email, name: res.user.name, phone: (res.user as any)?.phone});
+        
+        // Kiểm tra và lưu pending preferences nếu có
+        try {
+            const pendingPrefs = await getPendingPreferences();
+            if (pendingPrefs) {
+                await updatePreferencesApi(pendingPrefs);
+                await clearPendingPreferences();
+            }
+        } catch (error) {
+            console.error("Error syncing pending preferences:", error);
+        }
     };
 
     const register: AuthCtx["register"] = async (name, email, password, phone) => {
@@ -73,6 +86,17 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({children}) => {
             await AsyncStorage.setItem("token", res.accessToken);
             setToken(res.accessToken);
             setUser({id: res.user.id, email: res.user.email, name: res.user.name, phone: (res.user as any)?.phone});
+            
+            // Kiểm tra và lưu pending preferences nếu có
+            try {
+                const pendingPrefs = await getPendingPreferences();
+                if (pendingPrefs) {
+                    await updatePreferencesApi(pendingPrefs);
+                    await clearPendingPreferences();
+                }
+            } catch (error) {
+                console.error("Error syncing pending preferences:", error);
+            }
         } else {
 
         }

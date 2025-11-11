@@ -1,22 +1,40 @@
 import React, {useState} from "react";
-import {View, Text, TextInput, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert} from "react-native";
+import {View, Text, TextInput, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert, ActivityIndicator} from "react-native";
 import {Ionicons} from "@expo/vector-icons";
 import {useAuth} from "../context/AuthContext";
+import {updateProfileApi} from "../api/users";
 
 export default function EditProfileScreen({navigation}: any) {
-    const {user} = useAuth();
-    const [name, setName] = useState(user?.name ?? "Dianne Russell");
-    const [email, setEmail] = useState(user?.email ?? "dianne@example.com");
-    const [phone, setPhone] = useState(user?.phone ?? "+84 123 456 789");
+    const {user, refreshMe} = useAuth();
+    const [name, setName] = useState(user?.name ?? "");
+    const [phone, setPhone] = useState(user?.phone ?? "");
+    const [loading, setLoading] = useState(false);
 
-    const onSave = () => {
-        if (!name.trim() || !email.trim()) {
-            Alert.alert("Lỗi", "Vui lòng nhập đầy đủ thông tin");
+    const onSave = async () => {
+        if (!name.trim()) {
+            Alert.alert("Lỗi", "Vui lòng nhập họ tên");
             return;
         }
-        // TODO: gọi API cập nhật thông tin người dùng
-        Alert.alert("Thành công", "Thông tin cá nhân đã được cập nhật!");
-        navigation.goBack();
+
+        setLoading(true);
+        try {
+            await updateProfileApi({
+                name: name.trim(),
+                phone: phone.trim() || undefined,
+            });
+            
+            // Refresh user data
+            await refreshMe();
+            
+            Alert.alert("Thành công", "Thông tin cá nhân đã được cập nhật!", [
+                { text: "OK", onPress: () => navigation.goBack() }
+            ]);
+        } catch (error: any) {
+            const errorMessage = error?.response?.data?.message || error?.message || "Đã xảy ra lỗi. Vui lòng thử lại.";
+            Alert.alert("Lỗi", errorMessage);
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -31,17 +49,38 @@ export default function EditProfileScreen({navigation}: any) {
 
                 <View style={s.formGroup}>
                     <Text style={s.label}>Email</Text>
-                    <TextInput style={s.input} value={email} onChangeText={setEmail} keyboardType="email-address"/>
+                    <TextInput 
+                        style={[s.input, s.inputDisabled]} 
+                        value={user?.email ?? ""} 
+                        editable={false}
+                        placeholder="Email không thể thay đổi"
+                    />
                 </View>
 
                 <View style={s.formGroup}>
                     <Text style={s.label}>Số điện thoại</Text>
-                    <TextInput style={s.input} value={phone} onChangeText={setPhone} keyboardType="phone-pad"/>
+                    <TextInput 
+                        style={s.input} 
+                        value={phone} 
+                        onChangeText={setPhone} 
+                        keyboardType="phone-pad"
+                        placeholder="Nhập số điện thoại"
+                    />
                 </View>
 
-                <TouchableOpacity style={s.saveBtn} onPress={onSave}>
-                    <Ionicons name="save-outline" size={20} color="#fff" />
-                    <Text style={s.saveBtnText}>Lưu thay đổi</Text>
+                <TouchableOpacity 
+                    style={[s.saveBtn, loading && s.saveBtnDisabled]} 
+                    onPress={onSave}
+                    disabled={loading}
+                >
+                    {loading ? (
+                        <ActivityIndicator color="#fff" />
+                    ) : (
+                        <>
+                            <Ionicons name="save-outline" size={20} color="#fff" />
+                            <Text style={s.saveBtnText}>Lưu thay đổi</Text>
+                        </>
+                    )}
                 </TouchableOpacity>
 
                 <TouchableOpacity style={s.cancelBtn} onPress={() => navigation.goBack()}>
@@ -68,6 +107,10 @@ const s = StyleSheet.create({
         fontSize: 15,
         color: "#333"
     },
+    inputDisabled: {
+        backgroundColor: "#f5f5f5",
+        color: "#999"
+    },
     saveBtn: {
         flexDirection: "row",
         backgroundColor: "#f77",
@@ -76,6 +119,9 @@ const s = StyleSheet.create({
         alignItems: "center",
         justifyContent: "center",
         marginTop: 20
+    },
+    saveBtnDisabled: {
+        opacity: 0.6
     },
     saveBtnText: {color: "#fff", fontSize: 16, fontWeight: "600", marginLeft: 8},
     cancelBtn: {flexDirection: "row", alignItems: "center", justifyContent: "center", marginTop: 16},

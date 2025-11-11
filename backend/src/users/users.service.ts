@@ -51,4 +51,47 @@ export class UsersService {
     await this.prisma.user.update({ where: { id }, data: { passwordHash } });
     return { changed: true };
   }
+
+  async getPreferences(userId: string) {
+    return this.prisma.userPreference.findUnique({
+      where: { userId },
+    });
+  }
+
+  async updatePreferences(userId: string, dto: any) {
+    const existing = await this.prisma.userPreference.findUnique({
+      where: { userId },
+    });
+
+    const updateData: any = {};
+    
+    // Chỉ update các field được gửi lên (không phải undefined)
+    if (dto.gender !== undefined) updateData.gender = dto.gender;
+    if (dto.age !== undefined) updateData.age = dto.age;
+    if (dto.height !== undefined) updateData.height = dto.height;
+    if (dto.weight !== undefined) updateData.weight = dto.weight;
+    if (dto.activity !== undefined) updateData.activity = dto.activity;
+    if (dto.goal !== undefined) updateData.goal = dto.goal;
+    if (dto.dailyKcalTarget !== undefined) updateData.dailyKcalTarget = dto.dailyKcalTarget;
+    if (dto.dietType !== undefined) updateData.dietType = dto.dietType;
+    if (dto.dislikedIngredients !== undefined) updateData.dislikedIngredients = dto.dislikedIngredients;
+    if (dto.likedTags !== undefined) updateData.likedTags = dto.likedTags;
+
+    if (existing) {
+      return this.prisma.userPreference.update({
+        where: { userId },
+        data: updateData,
+      });
+    }
+
+    // Tạo mới với dữ liệu mặc định nếu không có
+    return this.prisma.userPreference.create({
+      data: {
+        userId,
+        ...updateData,
+        dislikedIngredients: updateData.dislikedIngredients ?? [],
+        likedTags: updateData.likedTags ?? [],
+      },
+    });
+  }
 }

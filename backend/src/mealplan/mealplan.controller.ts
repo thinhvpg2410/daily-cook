@@ -36,6 +36,37 @@ export class MealPlanController {
     return this.s.upsert(u.userId, dto);
   }
 
+  // Specific routes must come before parameterized routes
+  @Get("today-suggest")
+  async getTodaySuggest(@CurrentUser() u: any, @Query("slot") slot?: string) {
+    return this.s.getTodaySuggest(u.userId, slot);
+  }
+
+  @Get("shopping/from-range")
+  toShopping(
+    @CurrentUser() u: any,
+    @Query("start") start: string,
+    @Query("end") end: string,
+  ) {
+    return this.s.shoppingListFromRange(u.userId, start, end);
+  }
+
+  @Post("copy-week")
+  copyWeek(@CurrentUser() u: any, @Body() dto: CopyWeekDto) {
+    return this.s.copyWeek(u.userId, dto.from, dto.to);
+  }
+
+  @Post("suggest")
+  async suggestMeal(@CurrentUser() u: any, @Body() body: any) {
+    const { region, dietType, targetKcal } = body;
+    return this.s.suggestMeal(u.userId, region, dietType, targetKcal);
+  }
+
+  @Post("suggest-menu")
+  async suggestMenu(@CurrentUser() u: any, @Body() dto: SuggestMenuDto) {
+    return this.s.suggestMenu(u.userId, dto);
+  }
+
   @Get(":id")
   getOne(@CurrentUser() u: any, @Param("id") id: string) {
     return this.s.findOne(u.userId, id);
@@ -62,27 +93,5 @@ export class MealPlanController {
     @Body() dto: PatchSlotDto,
   ) {
     return this.s.patchSlot(u.userId, id, dto);
-  }
-
-  @Post("copy-week")
-  copyWeek(@CurrentUser() u: any, @Body() dto: CopyWeekDto) {
-    return this.s.copyWeek(u.userId, dto.from, dto.to);
-  }
-
-  @Get("shopping/from-range")
-  toShopping(
-    @CurrentUser() u: any,
-    @Query("start") start: string,
-    @Query("end") end: string,
-  ) {
-    return this.s.shoppingListFromRange(u.userId, start, end);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Post("suggest")
-  async suggestMeal(@Body() body: any, @Req() req: any) {
-    const userId = req.user.userId;
-    const { region, dietType, targetKcal } = body;
-    return this.s.suggestMeal(userId, region, dietType, targetKcal);
   }
 }
