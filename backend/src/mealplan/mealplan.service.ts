@@ -434,47 +434,58 @@ export class MealPlanService {
     });
 
     if (dto.persist ?? true) {
-      const upsertForSlot = async (slot: "breakfast" | "lunch" | "dinner") => {
-        const exists = await this.prisma.mealPlan.findFirst({
-          where: { userId, date },
-        });
-        const slots: Slots = exists ? (exists.slots as any as Slots) : {};
-        const ids = result.map((r) => r.id);
-        slots[slot] = ids;
-        if (!exists)
-          await this.prisma.mealPlan.create({ data: { userId, date, slots } });
-        else
-          await this.prisma.mealPlan.update({
-            where: { id: exists.id },
-            data: { slots },
-          });
-      };
+      // Get or create meal plan once
+      const exists = await this.prisma.mealPlan.findFirst({
+        where: { userId, date },
+      });
+      
+      const slots: Slots = exists ? (exists.slots as any as Slots) : { breakfast: [], lunch: [], dinner: [] };
+      const ids = result.map((r) => r.id);
 
       if (dto.slot === "all") {
-        await upsertForSlot("lunch");
-        await upsertForSlot("dinner");
-        const lightIds = result
-          .filter((r) =>
-            r.tags.some((t) => ["Veggie", "Soup", "Salad"].includes(t)),
-          )
-          .slice(0, 3)
-          .map((r) => r.id);
-        const exists = await this.prisma.mealPlan.findFirst({
-          where: { userId, date },
-        });
-        const slots: Slots = exists ? (exists.slots as any as Slots) : {};
-        slots.breakfast = lightIds.length
-          ? lightIds
-          : result.slice(0, 2).map((r) => r.id);
-        if (!exists)
-          await this.prisma.mealPlan.create({ data: { userId, date, slots } });
-        else
-          await this.prisma.mealPlan.update({
-            where: { id: exists.id },
-            data: { slots },
-          });
+        // Distribute recipes to slots intelligently
+        const lightRecipes = result.filter((r) =>
+          r.tags.some((t) => ["Veggie", "Soup", "Salad"].includes(t)),
+        );
+        const otherRecipes = result.filter((r) =>
+          !r.tags.some((t) => ["Veggie", "Soup", "Salad"].includes(t)),
+        );
+        
+        // Breakfast: prefer light recipes (1-2 items)
+        slots.breakfast = lightRecipes.length > 0
+          ? lightRecipes.slice(0, 2).map((r) => r.id)
+          : result.slice(0, 1).map((r) => r.id);
+        
+        // Lunch: remaining light recipes + half of other recipes
+        const remainingLight = lightRecipes.slice(2).map((r) => r.id);
+        const lunchCount = Math.max(2, Math.ceil(otherRecipes.length / 2));
+        const lunchOther = otherRecipes.slice(0, lunchCount).map((r) => r.id);
+        const lunchIds = [...remainingLight, ...lunchOther];
+        
+        // Dinner: remaining other recipes
+        const dinnerIds = otherRecipes.slice(lunchCount).map((r) => r.id);
+        
+        // If no recipes left for dinner, use some from lunch
+        if (dinnerIds.length === 0 && lunchIds.length > 2) {
+          slots.lunch = lunchIds.slice(0, -2);
+          slots.dinner = lunchIds.slice(-2);
+        } else {
+          slots.lunch = lunchIds;
+          slots.dinner = dinnerIds;
+        }
       } else {
-        await upsertForSlot(dto.slot);
+        // Replace the specific slot
+        slots[dto.slot] = ids;
+      }
+
+      // Save once
+      if (!exists) {
+        await this.prisma.mealPlan.create({ data: { userId, date, slots } });
+      } else {
+        await this.prisma.mealPlan.update({
+          where: { id: exists.id },
+          data: { slots },
+        });
       }
     }
 

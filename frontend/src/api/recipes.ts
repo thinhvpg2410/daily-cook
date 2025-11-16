@@ -37,3 +37,12 @@ export const checkFavoriteApi = (recipeId: string) => {
   return http.get<{ isFavorite: boolean }>(`/recipes/${recipeId}/favorite`);
 };
 
+export const searchRecipesApi = (params?: {
+  q?: string;
+  tag?: string;
+  page?: number;
+  limit?: number;
+}) => {
+  return http.get<{ total: number; page: number; limit: number; data: Recipe[] }>("/recipes", { params });
+};
+

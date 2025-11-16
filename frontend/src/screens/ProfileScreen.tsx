@@ -1,14 +1,20 @@
-import React, { useState } from "react";
-import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Alert } from "react-native";
+import React, { useState, useEffect } from "react";
+import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
+import { Calendar } from "react-native-calendars";
 import { Ionicons } from "@expo/vector-icons";
 import TabBar from "./TabBar";
 import { useAuth } from "../context/AuthContext";
+import { getMealPlansApi } from "../api/mealplan";
 
 
 export default function ProfileScreen({ navigation }: any) {
     const fallback = { name: "Dianne Russell", email: "dianne@example.com", phone: "+84 123 456 789" };
-    const { user, logout } = useAuth()
+    const { user, logout, token } = useAuth()
     const profile = user ?? fallback
+
+    const [calendarLoading, setCalendarLoading] = useState(false);
+    const [markedDates, setMarkedDates] = useState<Record<string, any>>({});
+    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
     // Mock meals
     const [meals] = useState({
@@ -16,6 +22,74 @@ export default function ProfileScreen({ navigation }: any) {
         lunch: ["Chicken Salad"],
         dinner: ["Grilled Salmon", "Steamed Veggies"]
     });
+
+    // Load meal plans for calendar
+    useEffect(() => {
+        if (token) {
+            loadMealPlans();
+        }
+    }, [token]);
+
+    const loadMealPlans = async () => {
+        if (!token) return;
+        
+        setCalendarLoading(true);
+        try {
+            // Get current month's meal plans
+            const today = new Date();
+            const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+            const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            
+            const startStr = startOfMonth.toISOString().split('T')[0];
+            const endStr = endOfMonth.toISOString().split('T')[0];
+            
+            const res = await getMealPlansApi({ start: startStr, end: endStr });
+            const plans = res.data || [];
+            
+            // Mark dates that have meal plans
+            const marked: Record<string, any> = {};
+            plans.forEach((plan: any) => {
+                const slots = plan.slots || {};
+                const hasMeals = 
+                    (slots.breakfast && slots.breakfast.length > 0) ||
+                    (slots.lunch && slots.lunch.length > 0) ||
+                    (slots.dinner && slots.dinner.length > 0);
+                
+                if (hasMeals) {
+                    marked[plan.date] = { 
+                        marked: true, 
+                        dotColor: "#f77",
+                        selected: plan.date === selectedDate
+                    };
+                }
+            });
+            
+            // Mark today
+            const todayStr = new Date().toISOString().split('T')[0];
+            if (marked[todayStr]) {
+                marked[todayStr].selected = true;
+                marked[todayStr].selectedColor = "#f77";
+            } else {
+                marked[todayStr] = { 
+                    selected: true, 
+                    selectedColor: "#f77",
+                    marked: false
+                };
+            }
+            
+            setMarkedDates(marked);
+        } catch (error) {
+            console.error("Error loading meal plans:", error);
+        } finally {
+            setCalendarLoading(false);
+        }
+    };
+
+    const handleDatePress = (day: any) => {
+        setSelectedDate(day.dateString);
+        // Navigate to calendar screen with selected date
+        navigation.navigate("Calendar", { selectedDate: day.dateString });
+    };
     const onLogOut = async () => {
         try {
             await logout();
@@ -46,6 +120,43 @@ export default function ProfileScreen({ navigation }: any) {
                     </TouchableOpacity>
 
                 </View>
+
+                {/* Calendar */}
+                {token && (
+                    <View style={s.calendarSection}>
+                        <Text style={s.sectionTitle}>Lịch thực đơn</Text>
+                        {calendarLoading ? (
+                            <View style={s.calendarLoading}>
+                                <ActivityIndicator size="small" color="#f77" />
+                            </View>
+                        ) : (
+                            <Calendar
+                                onDayPress={handleDatePress}
+                                markedDates={markedDates}
+                                style={s.calendar}
+                                theme={{
+                                    selectedDayBackgroundColor: "#f77",
+                                    selectedDayTextColor: "#fff",
+                                    todayTextColor: "#f77",
+                                    arrowColor: "#f77",
+                                    monthTextColor: "#333",
+                                    textDayFontWeight: "500",
+                                    textMonthFontWeight: "600",
+                                    textDayHeaderFontWeight: "600",
+                                }}
+                                enableSwipeMonths={true}
+                                hideExtraDays={true}
+                            />
+                        )}
+                        <TouchableOpacity 
+                            style={s.viewFullCalendarBtn}
+                            onPress={() => navigation.navigate("Calendar")}
+                        >
+                            <Text style={s.viewFullCalendarText}>Xem lịch đầy đủ</Text>
+                            <Ionicons name="chevron-forward" size={18} color="#f77" />
+                        </TouchableOpacity>
+                    </View>
+                )}
 
                 {/* Account Actions */}
                 <TouchableOpacity style={s.item} onPress={() => navigation.navigate("ChangePassword")}>
@@ -123,5 +234,46 @@ const s = StyleSheet.create({
     mealCard: { backgroundColor: "#fff0f3", padding: 12, borderRadius: 12, marginVertical: 6 },
     mealTitle: { fontSize: 14, fontWeight: "600", color: "#f77" },
     mealText: { fontSize: 13, color: "#555", marginLeft: 6, marginVertical: 2 },
-    noMeal: { fontSize: 13, color: "#777", fontStyle: "italic", marginLeft: 6, marginVertical: 2 }
+    noMeal: { fontSize: 13, color: "#777", fontStyle: "italic", marginLeft: 6, marginVertical: 2 },
+    calendarSection: {
+        backgroundColor: "#fff",
+        borderRadius: 12,
+        padding: 12,
+        marginBottom: 24,
+        shadowColor: "#000",
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
+        elevation: 2,
+    },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: "600",
+        color: "#f77",
+        marginBottom: 12,
+    },
+    calendar: {
+        borderRadius: 12,
+        marginBottom: 12,
+    },
+    calendarLoading: {
+        padding: 20,
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: 300,
+    },
+    viewFullCalendarBtn: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        paddingVertical: 10,
+        borderTopWidth: 1,
+        borderTopColor: "#eee",
+        marginTop: 8,
+    },
+    viewFullCalendarText: {
+        color: "#f77",
+        fontWeight: "600",
+        fontSize: 14,
+        marginRight: 4,
+    },
 });
