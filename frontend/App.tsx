@@ -31,6 +31,7 @@ import EditProfileScreen from "./src/screens/EditProfileScreen";
 import ChangePasswordScreen from "./src/screens/ChangePasswordScreen";
 import FavoriteRecipes from "./src/screens/FavoriteRecipesScreen";
 import NutritionTracker from "./src/screens/NutritionTrackerScreen";
+import NutritionGoalsScreen from "./src/screens/NutritionGoalsScreen";
 
 
 const Stack = createNativeStackNavigator();
@@ -120,6 +121,7 @@ function RootNavigator() {
                 <Stack.Screen name="EditProfile" component={EditProfileScreen} />
                 <Stack.Screen name="FavoriteRecipes" component={FavoriteRecipes} />
                 <Stack.Screen name="NutritionTracker" component={NutritionTracker} />
+                <Stack.Screen name="NutritionGoals" component={NutritionGoalsScreen} />
             </Stack.Navigator>
         );
     }

@@ -53,3 +53,19 @@ export const getShoppingListApi = (params: {
 }) => {
     return http.get("/mealplans/shopping/from-range", {params});
 };
+
+export const patchMealPlanSlotApi = (
+    mealPlanId: string,
+    data: {
+        slot: "breakfast" | "lunch" | "dinner";
+        set?: string[];
+        add?: string;
+        remove?: string;
+    }
+) => {
+    return http.patch(`/mealplans/${mealPlanId}/slot`, data);
+};
+
+export const getMealPlanApi = (id: string) => {
+    return http.get(`/mealplans/${id}`);
+};

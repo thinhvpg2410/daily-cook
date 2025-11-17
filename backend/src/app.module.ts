@@ -5,6 +5,8 @@ import { RecipesModule } from "./recipes/recipes.module";
 import { AuthModule } from "./auth/auth.module";
 import { ConfigModule } from "@nestjs/config";
 import { MealPlanModule } from "./mealplan/mealplan.module";
+import { ShoppingListModule } from "./shopping-list/shopping-list.module";
+import { FoodLogModule } from "./food-log/food-log.module";
 
 @Module({
   imports: [
@@ -17,6 +19,8 @@ import { MealPlanModule } from "./mealplan/mealplan.module";
     UsersModule,
     RecipesModule,
     MealPlanModule,
+    ShoppingListModule,
+    FoodLogModule,
   ],
 })
 export class AppModule {}

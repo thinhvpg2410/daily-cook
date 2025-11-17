@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { QueryRecipeDto } from "./dto/query-recipe.dto";
 
@@ -71,5 +71,94 @@ export class RecipesService {
       }),
     ]);
     return { total, page: q.page, limit: q.limit, data };
+  }
+
+  async addFavorite(userId: string, recipeId: string) {
+    // Check if recipe exists
+    const recipe = await this.prisma.recipe.findUnique({
+      where: { id: recipeId },
+    });
+    if (!recipe) {
+      throw new NotFoundException("Recipe not found");
+    }
+
+    // Check if already favorited
+    const existing = await this.prisma.userFavoriteRecipe.findUnique({
+      where: { userId_recipeId: { userId, recipeId } },
+    });
+    if (existing) {
+      return existing;
+    }
+
+    return this.prisma.userFavoriteRecipe.create({
+      data: { userId, recipeId },
+      include: {
+        recipe: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            image: true,
+            cookTime: true,
+            likes: true,
+            tags: true,
+            totalKcal: true,
+            region: true,
+          },
+        },
+      },
+    });
+  }
+
+  async removeFavorite(userId: string, recipeId: string) {
+    const favorite = await this.prisma.userFavoriteRecipe.findUnique({
+      where: { userId_recipeId: { userId, recipeId } },
+    });
+    if (!favorite) {
+      throw new NotFoundException("Favorite not found");
+    }
+
+    await this.prisma.userFavoriteRecipe.delete({
+      where: { userId_recipeId: { userId, recipeId } },
+    });
+    return { deleted: true };
+  }
+
+  async getFavorites(userId: string) {
+    const favorites = await this.prisma.userFavoriteRecipe.findMany({
+      where: { userId },
+      include: {
+        recipe: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            image: true,
+            cookTime: true,
+            likes: true,
+            tags: true,
+            totalKcal: true,
+            region: true,
+            protein: true,
+            fat: true,
+            carbs: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return favorites.map((f) => ({
+      id: f.id,
+      recipe: f.recipe,
+      createdAt: f.createdAt,
+    }));
+  }
+
+  async isFavorite(userId: string, recipeId: string) {
+    const favorite = await this.prisma.userFavoriteRecipe.findUnique({
+      where: { userId_recipeId: { userId, recipeId } },
+    });
+    return { isFavorite: !!favorite };
   }
 }
