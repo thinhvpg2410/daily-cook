@@ -279,15 +279,23 @@ export default function NutritionTracker({ navigation }: any) {
       >
         <View style={s.header}>
           <Text style={s.title}>Theo dõi dinh dưỡng</Text>
-          <TouchableOpacity
-            style={s.addButton}
-            onPress={() => {
-              setSelectedDate(formatDate(new Date()));
-              setShowAddModal(true);
-            }}
-          >
-            <Ionicons name="add" size={24} color="#fff" />
-          </TouchableOpacity>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <TouchableOpacity
+              style={[s.addButton, { backgroundColor: "#4dabf7" }]}
+              onPress={() => navigation.navigate("NutritionGoals")}
+            >
+              <Ionicons name="flag-outline" size={20} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={s.addButton}
+              onPress={() => {
+                setSelectedDate(formatDate(new Date()));
+                setShowAddModal(true);
+              }}
+            >
+              <Ionicons name="add" size={24} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Hôm nay */}
