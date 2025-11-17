@@ -8,8 +8,22 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.use(helmet()); // bảo vệ header cơ bản
-  app.enableCors({ origin: true, credentials: true });
+  
+  // Configure CORS before helmet to avoid conflicts
+  app.enableCors({
+    origin: true, // Allow all origins in development
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    exposedHeaders: ['Content-Type', 'Authorization'],
+  });
+  
+  // Configure helmet with CORS-friendly settings
+  app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    crossOriginEmbedderPolicy: false,
+  }));
+  
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalInterceptors(new LoggingInterceptor());

@@ -24,7 +24,19 @@ http.interceptors.request.use(async (config) => {
 http.interceptors.response.use(
     (res) => res,
     (err) => {
-        console.log(err)
+        // Log error details for debugging
+        if (err.response) {
+            console.error('API Error:', {
+                status: err.response.status,
+                statusText: err.response.statusText,
+                data: err.response.data,
+                url: err.config?.url,
+            });
+        } else if (err.request) {
+            console.error('Network Error:', err.message);
+        } else {
+            console.error('Error:', err.message);
+        }
         return Promise.reject(err);
     }
 );
