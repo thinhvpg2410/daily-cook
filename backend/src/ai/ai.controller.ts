@@ -1,0 +1,49 @@
+import { Body, Controller, Post, UseGuards } from "@nestjs/common";
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from "@nestjs/swagger";
+import { AIService } from "./ai.service";
+import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
+import { CurrentUser } from "../common/decorators/user.decorator";
+import { ChatMessageDto, SuggestFromChatDto } from "./dto/chat.dto";
+
+@ApiTags("AI")
+@UseGuards(JwtAuthGuard)
+@Controller("ai")
+export class AIController {
+  constructor(private readonly aiService: AIService) {}
+
+  @Post("chat")
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({ summary: "Chat với AI về gợi ý món ăn" })
+  @ApiResponse({ status: 200, description: "Phản hồi từ AI" })
+  @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
+  @ApiResponse({ status: 400, description: "Lỗi AI service" })
+  async chat(@CurrentUser() user: any, @Body() dto: ChatMessageDto) {
+    return this.aiService.chatWithUser(user.userId, dto.message, dto.history);
+  }
+
+  @Post("suggest-from-chat")
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({ summary: "Gợi ý món ăn từ yêu cầu chat" })
+  @ApiResponse({ status: 200, description: "Danh sách món ăn được gợi ý" })
+  @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
+  @ApiResponse({ status: 400, description: "Lỗi AI service" })
+  async suggestFromChat(
+    @CurrentUser() user: any,
+    @Body() dto: SuggestFromChatDto,
+  ) {
+    return this.aiService.suggestRecipesFromChat(
+      user.userId,
+      dto.request,
+      dto.date,
+    );
+  }
+
+  @Post("list-models")
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({ summary: "List available models (for debugging)" })
+  @ApiResponse({ status: 200, description: "List of available models" })
+  async listModels() {
+    return this.aiService.listAvailableModels();
+  }
+}
+
