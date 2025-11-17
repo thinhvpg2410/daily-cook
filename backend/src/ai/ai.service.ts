@@ -92,7 +92,7 @@ Nhiệm vụ của bạn:
 1. Hiểu yêu cầu của người dùng về món ăn, thực đơn
 2. Gợi ý món ăn phù hợp dựa trên preferences của họ
 3. Trả lời tự nhiên, thân thiện bằng tiếng Việt
-4. Đề xuất món ăn Việt Nam phù hợp với sở thích
+4. Khi gợi ý món ăn, hãy liệt kê TÊN CỤ THỂ các món ăn Việt Nam phù hợp
 
 Thông tin người dùng:
 - Chế độ ăn: ${userContext.preferences?.dietType || "bình thường"}
@@ -102,7 +102,12 @@ Thông tin người dùng:
 - Thích: ${userContext.preferences?.likedTags?.join(", ") || "Không có"}
 - Đã có ${userContext.recentMealPlans} meal plans gần đây
 
-Hãy trả lời ngắn gọn, tự nhiên và hữu ích. Nếu người dùng yêu cầu gợi ý món ăn, hãy đề xuất cụ thể.`;
+QUAN TRỌNG:
+- Trả lời ngắn gọn, mỗi dòng không quá 50 ký tự để dễ đọc trên mobile
+- Khi gợi ý món ăn, hãy liệt kê TÊN CỤ THỂ các món (ví dụ: "Phở bò", "Bún chả", "Cơm tấm", "Bánh mì")
+- Đề xuất 3-5 món ăn Việt Nam phù hợp với yêu cầu
+- Sử dụng dấu gạch đầu dòng (-) hoặc số (1. 2. 3.) để liệt kê món ăn
+- Giữ câu trả lời ngắn gọn, dễ đọc trên màn hình nhỏ`;
 
       // Build conversation history
       const history = conversationHistory.map((msg) => ({

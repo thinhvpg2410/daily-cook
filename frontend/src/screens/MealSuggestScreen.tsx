@@ -14,14 +14,22 @@ import {
   Platform,
   Dimensions,
   Alert,
+  Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { suggestMealApi, suggestMenuApi, upsertMealPlanApi, patchMealPlanSlotApi, getMealPlansApi } from "../api/mealplan";
+import {
+  suggestMenuApi,
+  upsertMealPlanApi,
+  patchMealPlanSlotApi,
+  getMealPlansApi,
+} from "../api/mealplan";
 import { chatWithAI, suggestFromChat } from "../api/ai";
+import { getPreferencesApi } from "../api/users";
 import { useAuth } from "../context/AuthContext";
 import TabBar from "./TabBar";
 
 const { width } = Dimensions.get("window");
+const CARD_WIDTH = (width - 48) / 2; // 2 columns with padding
 
 const PLACEHOLDER_IMG =
   "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?q=80&w=1200&auto=format&fit=crop";
@@ -50,8 +58,11 @@ type Recipe = {
   tags?: string[];
 };
 
+type TabType = "chat" | "filter";
+
 export default function MealSuggestScreen({ navigation }: any) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const [activeTab, setActiveTab] = useState<TabType>("chat");
   const [region, setRegion] = useState("All");
   const [dietType, setDietType] = useState("normal");
   const [targetKcal, setTargetKcal] = useState<number>(2000);
@@ -67,12 +78,76 @@ export default function MealSuggestScreen({ navigation }: any) {
   ]);
   const [inputText, setInputText] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  const [selectedDate, setSelectedDate] = useState(
+    new Date().toISOString().split("T")[0]
+  );
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [userPreferences, setUserPreferences] = useState<any>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const flatListRef = useRef<FlatList>(null);
 
+  // Load user preferences on mount
   useEffect(() => {
-    // Scroll to bottom when new message is added
+    loadUserPreferences();
+    // Auto-suggest based on current time
+    autoSuggestBasedOnTime();
+  }, []);
+
+  // Load user preferences
+  const loadUserPreferences = async () => {
+    try {
+      const prefs = await getPreferencesApi();
+      if (prefs.data) {
+        setUserPreferences(prefs.data);
+        setTargetKcal(prefs.data.dailyKcalTarget || 2000);
+        setDietType(prefs.data.dietType || "normal");
+      }
+    } catch (error) {
+      console.error("Error loading preferences:", error);
+    }
+  };
+
+  // Auto-suggest based on current time
+  const autoSuggestBasedOnTime = async () => {
+    const hour = new Date().getHours();
+    let slot: "breakfast" | "lunch" | "dinner" = "lunch";
+    if (hour < 10) slot = "breakfast";
+    else if (hour < 16) slot = "lunch";
+    else slot = "dinner";
+
+    // Add quick suggestion message
+    const quickMessage: Message = {
+      id: Date.now().toString(),
+      type: "assistant",
+      content: `💡 Gợi ý: Bạn có thể hỏi tôi về món ăn cho ${slot === "breakfast" ? "bữa sáng" : slot === "lunch" ? "bữa trưa" : "bữa tối"} hôm nay, hoặc sử dụng bộ lọc bên dưới để tìm món phù hợp!`,
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, quickMessage]);
+  };
+
+  // Quick suggestions based on time
+  const getQuickSuggestions = () => {
+    const hour = new Date().getHours();
+    const suggestions = [];
+    
+    if (hour < 10) {
+      suggestions.push({ text: "Gợi ý món sáng", slot: "breakfast" });
+      suggestions.push({ text: "Món ăn nhẹ", slot: "breakfast" });
+    } else if (hour < 16) {
+      suggestions.push({ text: "Gợi ý món trưa", slot: "lunch" });
+      suggestions.push({ text: "Món nhanh", slot: "lunch" });
+    } else {
+      suggestions.push({ text: "Gợi ý món tối", slot: "dinner" });
+      suggestions.push({ text: "Món đầy đủ", slot: "dinner" });
+    }
+    
+    suggestions.push({ text: "Món chay", slot: "all" });
+    suggestions.push({ text: "Món ít calo", slot: "all" });
+    
+    return suggestions;
+  };
+
+  useEffect(() => {
     setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
@@ -81,19 +156,17 @@ export default function MealSuggestScreen({ navigation }: any) {
   const onSuggest = async () => {
     setLoading(true);
     try {
-      // Use suggestMenuApi to get suggestions WITHOUT persisting (just suggest)
       const res = await suggestMenuApi({
         date: selectedDate,
         slot: "all",
-        region: region !== "All" ? region as "Northern" | "Central" | "Southern" : undefined,
+        region: region !== "All" ? (region as "Northern" | "Central" | "Southern") : undefined,
         vegetarian: dietType === "vegan",
-        persist: false, // Only suggest, don't save to calendar
+        persist: false,
       });
-      
+
       const suggestedRecipes = res.data?.dishes || [];
       setRecipes(suggestedRecipes);
 
-      // Add suggestion message to chat
       const suggestionMessage: Message = {
         id: Date.now().toString(),
         type: "assistant",
@@ -101,6 +174,7 @@ export default function MealSuggestScreen({ navigation }: any) {
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, suggestionMessage]);
+      setActiveTab("chat"); // Switch to chat tab to see results
     } catch (err) {
       console.error("Error suggesting meals:", err);
       const errorMessage: Message = {
@@ -114,90 +188,64 @@ export default function MealSuggestScreen({ navigation }: any) {
       setLoading(false);
     }
   };
-  
-  // Add all suggested recipes to calendar
-  const handleAddAllToCalendar = async () => {
-    if (recipes.length === 0) return;
+
+  const handleQuickSuggestion = async (text: string, slot: string) => {
+    setInputText(text);
+    setActiveTab("chat");
     
+    // Simulate sending the message
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      type: "user",
+      content: text,
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, userMessage]);
+    setChatLoading(true);
+
     try {
-      // Get or create meal plan
-      let mealPlanId: string;
-      try {
-        const plansRes = await getMealPlansApi({ start: selectedDate, end: selectedDate });
-        const plans = plansRes.data || [];
-        const existingPlan = plans.find((p: any) => p.date === selectedDate);
-        
-        if (existingPlan) {
-          mealPlanId = existingPlan.id;
-        } else {
-          const createRes = await upsertMealPlanApi({
-            date: selectedDate,
-            slots: { breakfast: [], lunch: [], dinner: [] },
-          });
-          mealPlanId = createRes.data.id;
-        }
-      } catch (error) {
-        const createRes = await upsertMealPlanApi({
-          date: selectedDate,
-          slots: { breakfast: [], lunch: [], dinner: [] },
-        });
-        mealPlanId = createRes.data.id;
+      const suggestions = await suggestFromChat(text, selectedDate);
+      const suggestedRecipes = suggestions.dishes || [];
+
+      if (suggestedRecipes.length > 0) {
+        setRecipes(suggestedRecipes);
+        const aiMessage: Message = {
+          id: Date.now().toString(),
+          type: "assistant",
+          content: `Tôi đã tìm thấy ${suggestedRecipes.length} món ăn phù hợp:\n\n${suggestedRecipes
+            .map(
+              (r: Recipe, idx: number) =>
+                `${idx + 1}. ${r.title}${r.totalKcal ? ` (~${Math.round(r.totalKcal)} kcal)` : ""}`
+            )
+            .join("\n")}\n\nBạn có thể xem chi tiết và chọn món để thêm vào lịch! 🍽️`,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, aiMessage]);
       }
-      
-      // Distribute recipes to slots (simple logic: first 2 breakfast, next 2 lunch, rest dinner)
-      const breakfastIds = recipes.slice(0, 2).map((r) => r.id);
-      const lunchIds = recipes.slice(2, 4).map((r) => r.id);
-      const dinnerIds = recipes.slice(4).map((r) => r.id);
-      
-      // Add to each slot
-      if (breakfastIds.length > 0) {
-        for (const id of breakfastIds) {
-          await patchMealPlanSlotApi(mealPlanId, { slot: "breakfast", add: id });
-        }
-      }
-      if (lunchIds.length > 0) {
-        for (const id of lunchIds) {
-          await patchMealPlanSlotApi(mealPlanId, { slot: "lunch", add: id });
-        }
-      }
-      if (dinnerIds.length > 0) {
-        for (const id of dinnerIds) {
-          await patchMealPlanSlotApi(mealPlanId, { slot: "dinner", add: id });
-        }
-      }
-      
-      const successMessage: Message = {
-        id: Date.now().toString(),
-        type: "assistant",
-        content: `Đã thêm tất cả ${recipes.length} món vào lịch ngày ${selectedDate}! ✅`,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, successMessage]);
-    } catch (error: any) {
-      const errorMessage: Message = {
-        id: Date.now().toString(),
-        type: "assistant",
-        content: "Không thể thêm món vào lịch. Vui lòng thử lại!",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+    } catch (error) {
+      console.error("Error in quick suggestion:", error);
+    } finally {
+      setChatLoading(false);
     }
   };
-  
-  // Add recipe to calendar manually
-  const handleAddToCalendar = async (recipeId: string, slot: "breakfast" | "lunch" | "dinner") => {
+
+  const handleAddToCalendar = async (
+    recipeId: string,
+    slot: "breakfast" | "lunch" | "dinner"
+  ) => {
     try {
-      // First, get or create meal plan
       let mealPlanId: string;
       try {
-        const plansRes = await getMealPlansApi({ start: selectedDate, end: selectedDate });
+        const plansRes = await getMealPlansApi({
+          start: selectedDate,
+          end: selectedDate,
+        });
         const plans = plansRes.data || [];
         const existingPlan = plans.find((p: any) => p.date === selectedDate);
-        
+
         if (existingPlan) {
           mealPlanId = existingPlan.id;
         } else {
-          // Create new meal plan
           const createRes = await upsertMealPlanApi({
             date: selectedDate,
             slots: { breakfast: [], lunch: [], dinner: [] },
@@ -205,35 +253,24 @@ export default function MealSuggestScreen({ navigation }: any) {
           mealPlanId = createRes.data.id;
         }
       } catch (error) {
-        // If get fails, create new
         const createRes = await upsertMealPlanApi({
           date: selectedDate,
           slots: { breakfast: [], lunch: [], dinner: [] },
         });
         mealPlanId = createRes.data.id;
       }
-      
-      // Add recipe to slot
+
       await patchMealPlanSlotApi(mealPlanId, {
         slot,
         add: recipeId,
       });
-      
-      const successMessage: Message = {
-        id: Date.now().toString(),
-        type: "assistant",
-        content: `Đã thêm món vào ${slot === "breakfast" ? "Bữa Sáng" : slot === "lunch" ? "Bữa Trưa" : "Bữa Tối"} ngày ${selectedDate}! ✅`,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, successMessage]);
+
+      Alert.alert(
+        "Thành công! ✅",
+        `Đã thêm món vào ${slot === "breakfast" ? "Bữa Sáng" : slot === "lunch" ? "Bữa Trưa" : "Bữa Tối"} ngày ${selectedDate}!`
+      );
     } catch (error: any) {
-      const errorMessage: Message = {
-        id: Date.now().toString(),
-        type: "assistant",
-        content: "Không thể thêm món vào lịch. Vui lòng thử lại!",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      Alert.alert("Lỗi", "Không thể thêm món vào lịch. Vui lòng thử lại!");
     }
   };
 
@@ -248,19 +285,18 @@ export default function MealSuggestScreen({ navigation }: any) {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const messageText = inputText.trim();
     setInputText("");
     setChatLoading(true);
 
     try {
-      // Build conversation history (last 10 messages)
       const recentMessages = messages.slice(-10).map((msg) => ({
         role: msg.type as "user" | "assistant",
         content: msg.content,
       }));
 
-      // Check if user is asking for recipe suggestions
-      const userRequest = inputText.trim().toLowerCase();
-      const isRecipeRequest = 
+      const userRequest = messageText.toLowerCase();
+      const isRecipeRequest =
         userRequest.includes("gợi ý") ||
         userRequest.includes("suggest") ||
         userRequest.includes("món") ||
@@ -269,24 +305,26 @@ export default function MealSuggestScreen({ navigation }: any) {
         userRequest.includes("thực đơn");
 
       if (isRecipeRequest) {
-        // Use AI to suggest recipes
         try {
-          const suggestions = await suggestFromChat(inputText.trim(), selectedDate);
+          const suggestions = await suggestFromChat(messageText, selectedDate);
           const suggestedRecipes = suggestions.dishes || [];
-          
+
           if (suggestedRecipes.length > 0) {
             setRecipes(suggestedRecipes);
-            
             const aiMessage: Message = {
               id: Date.now().toString(),
               type: "assistant",
-              content: `Tôi đã tìm thấy ${suggestedRecipes.length} món ăn phù hợp với yêu cầu của bạn! Bạn có thể xem và chọn món để thêm vào lịch. 🍽️`,
+              content: `Tôi đã tìm thấy ${suggestedRecipes.length} món ăn phù hợp:\n\n${suggestedRecipes
+                .map(
+                  (r: Recipe, idx: number) =>
+                    `${idx + 1}. ${r.title}${r.totalKcal ? ` (~${Math.round(r.totalKcal)} kcal)` : ""}`
+                )
+                .join("\n")}\n\nBạn có thể xem chi tiết và chọn món để thêm vào lịch! 🍽️`,
               timestamp: new Date(),
             };
             setMessages((prev) => [...prev, aiMessage]);
           } else {
-            // Fallback to regular chat
-            const response = await chatWithAI(inputText.trim(), recentMessages);
+            const response = await chatWithAI(messageText, recentMessages);
             const aiMessage: Message = {
               id: Date.now().toString(),
               type: "assistant",
@@ -296,9 +334,8 @@ export default function MealSuggestScreen({ navigation }: any) {
             setMessages((prev) => [...prev, aiMessage]);
           }
         } catch (suggestError) {
-          // If suggest fails, fallback to regular chat
           console.error("Error suggesting recipes:", suggestError);
-          const response = await chatWithAI(inputText.trim(), recentMessages);
+          const response = await chatWithAI(messageText, recentMessages);
           const aiMessage: Message = {
             id: Date.now().toString(),
             type: "assistant",
@@ -308,8 +345,7 @@ export default function MealSuggestScreen({ navigation }: any) {
           setMessages((prev) => [...prev, aiMessage]);
         }
       } else {
-        // Regular chat
-        const response = await chatWithAI(inputText.trim(), recentMessages);
+        const response = await chatWithAI(messageText, recentMessages);
         const aiMessage: Message = {
           id: Date.now().toString(),
           type: "assistant",
@@ -323,7 +359,9 @@ export default function MealSuggestScreen({ navigation }: any) {
       const errorMessage: Message = {
         id: Date.now().toString(),
         type: "assistant",
-        content: error?.response?.data?.message || "Xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại!",
+        content:
+          error?.response?.data?.message ||
+          "Xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại!",
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
@@ -384,341 +422,401 @@ export default function MealSuggestScreen({ navigation }: any) {
           <Text style={styles.recipeTitle} numberOfLines={2}>
             {item.title}
           </Text>
-          {item.description && (
-            <Text style={styles.recipeDesc} numberOfLines={2}>
-              {item.description}
-            </Text>
-          )}
           <View style={styles.recipeInfo}>
-            <View style={styles.recipeInfoItem}>
-              <Ionicons name="time-outline" size={14} color="#f77" />
-              <Text style={styles.recipeInfoText}>
-                {item.cookTime ?? 30} phút
-              </Text>
-            </View>
-            <View style={styles.recipeInfoItem}>
-              <Ionicons name="flame-outline" size={14} color="#f77" />
-              <Text style={styles.recipeInfoText}>
-                {Math.round(item.totalKcal ?? 0)} kcal
-              </Text>
-            </View>
+            {item.cookTime && (
+              <View style={styles.recipeInfoItem}>
+                <Ionicons name="time-outline" size={12} color="#f77" />
+                <Text style={styles.recipeInfoText}>{item.cookTime} phút</Text>
+              </View>
+            )}
+            {item.totalKcal && (
+              <View style={styles.recipeInfoItem}>
+                <Ionicons name="flame-outline" size={12} color="#f77" />
+                <Text style={styles.recipeInfoText}>
+                  {Math.round(item.totalKcal)} kcal
+                </Text>
+              </View>
+            )}
           </View>
-          {item.tags && item.tags.length > 0 && (
-            <View style={styles.tagsContainer}>
-              {item.tags.slice(0, 3).map((tag, idx) => (
-                <View key={idx} style={styles.tag}>
-                  <Text style={styles.tagText}>{tag}</Text>
-                </View>
-              ))}
-            </View>
-          )}
         </View>
       </TouchableOpacity>
-      <View style={styles.recipeActions}>
+      <View style={styles.recipeQuickActions}>
         <TouchableOpacity
-          style={styles.addToCalendarBtn}
-          onPress={() => {
-            Alert.alert(
-              "Thêm vào lịch",
-              "Chọn bữa ăn:",
-              [
-                { text: "Hủy", style: "cancel" },
-                {
-                  text: "Bữa Sáng",
-                  onPress: () => handleAddToCalendar(item.id, "breakfast"),
-                },
-                {
-                  text: "Bữa Trưa",
-                  onPress: () => handleAddToCalendar(item.id, "lunch"),
-                },
-                {
-                  text: "Bữa Tối",
-                  onPress: () => handleAddToCalendar(item.id, "dinner"),
-                },
-              ]
-            );
-          }}
+          style={styles.quickActionBtn}
+          onPress={() => handleAddToCalendar(item.id, "breakfast")}
         >
-          <Ionicons name="calendar-outline" size={16} color="#f77" />
-          <Text style={styles.addToCalendarText}>Thêm</Text>
+          <Text style={styles.quickActionText}>Sáng</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.quickActionBtn}
+          onPress={() => handleAddToCalendar(item.id, "lunch")}
+        >
+          <Text style={styles.quickActionText}>Trưa</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.quickActionBtn}
+          onPress={() => handleAddToCalendar(item.id, "dinner")}
+        >
+          <Text style={styles.quickActionText}>Tối</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    if (date.toDateString() === today.toDateString()) return "Hôm nay";
+    if (date.toDateString() === tomorrow.toDateString()) return "Ngày mai";
+    return date.toLocaleDateString("vi-VN", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    });
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
-      >
+      <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color="#f77" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Gợi ý món ăn</Text>
-          <View style={{ width: 24 }} />
+          <TouchableOpacity onPress={() => setShowDatePicker(true)}>
+            <View style={styles.dateBadge}>
+              <Ionicons name="calendar-outline" size={16} color="#f77" />
+              <Text style={styles.dateBadgeText}>{formatDate(selectedDate)}</Text>
+            </View>
+          </TouchableOpacity>
         </View>
 
-        {/* Chat Section */}
-        <View style={styles.chatSection}>
+        {/* Tabs */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === "chat" && styles.tabActive]}
+            onPress={() => setActiveTab("chat")}
+          >
+            <Ionicons
+              name="chatbubbles-outline"
+              size={20}
+              color={activeTab === "chat" ? "#f77" : "#999"}
+            />
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === "chat" && styles.tabTextActive,
+              ]}
+            >
+              Chat AI
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === "filter" && styles.tabActive]}
+            onPress={() => setActiveTab("filter")}
+          >
+            <Ionicons
+              name="options-outline"
+              size={20}
+              color={activeTab === "filter" ? "#f77" : "#999"}
+            />
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === "filter" && styles.tabTextActive,
+              ]}
+            >
+              Bộ lọc
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Content based on active tab */}
+        {activeTab === "chat" ? (
+          <View style={styles.chatTabContent}>
+            {/* Quick Suggestions */}
+            {messages.length <= 2 && (
+              <View style={styles.quickSuggestionsContainer}>
+                <Text style={styles.quickSuggestionsTitle}>Gợi ý nhanh</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.quickSuggestionsList}
+                >
+                  {getQuickSuggestions().map((suggestion, idx) => (
+                    <TouchableOpacity
+                      key={idx}
+                      style={styles.quickSuggestionChip}
+                      onPress={() =>
+                        handleQuickSuggestion(suggestion.text, suggestion.slot)
+                      }
+                    >
+                      <Text style={styles.quickSuggestionText}>
+                        {suggestion.text}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Chat Section */}
+            <View style={styles.chatSection}>
+              <ScrollView
+                ref={scrollViewRef}
+                style={styles.chatContainer}
+                contentContainerStyle={styles.chatContent}
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled={true}
+              >
+                <FlatList
+                  ref={flatListRef}
+                  data={messages}
+                  keyExtractor={(item) => item.id}
+                  renderItem={renderMessage}
+                  scrollEnabled={false}
+                />
+                {chatLoading && (
+                  <View
+                    style={[styles.messageContainer, styles.assistantMessage]}
+                  >
+                    <View style={styles.avatarContainer}>
+                      <Ionicons name="restaurant" size={20} color="#f77" />
+                    </View>
+                    <View style={[styles.messageBubble, styles.assistantBubble]}>
+                      <ActivityIndicator size="small" color="#f77" />
+                    </View>
+                  </View>
+                )}
+              </ScrollView>
+
+              {/* Input Section */}
+              <KeyboardAvoidingView
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
+              >
+                <View style={styles.inputContainer}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Hỏi về món ăn, công thức, nguyên liệu..."
+                    placeholderTextColor="#999"
+                    value={inputText}
+                    onChangeText={setInputText}
+                    multiline
+                    maxLength={500}
+                    onSubmitEditing={onSendMessage}
+                  />
+                  <TouchableOpacity
+                    style={[
+                      styles.sendButton,
+                      (!inputText.trim() || chatLoading) &&
+                        styles.sendButtonDisabled,
+                    ]}
+                    onPress={onSendMessage}
+                    disabled={!inputText.trim() || chatLoading}
+                  >
+                    <Ionicons
+                      name="send"
+                      size={20}
+                      color={
+                        inputText.trim() && !chatLoading ? "#fff" : "#ccc"
+                      }
+                    />
+                  </TouchableOpacity>
+                </View>
+              </KeyboardAvoidingView>
+            </View>
+          </View>
+        ) : (
           <ScrollView
-            ref={scrollViewRef}
-            style={styles.chatContainer}
-            contentContainerStyle={styles.chatContent}
+            style={styles.filterTabContent}
+            contentContainerStyle={styles.filterTabContentInner}
             showsVerticalScrollIndicator={false}
           >
-            <FlatList
-              ref={flatListRef}
-              data={messages}
-              keyExtractor={(item) => item.id}
-              renderItem={renderMessage}
-              scrollEnabled={false}
-            />
-            {chatLoading && (
-              <View style={[styles.messageContainer, styles.assistantMessage]}>
-                <View style={styles.avatarContainer}>
-                  <Ionicons name="restaurant" size={20} color="#f77" />
+            {/* User Preferences Info */}
+            {userPreferences && (
+              <View style={styles.preferencesCard}>
+                <View style={styles.preferencesHeader}>
+                  <Ionicons name="person-circle-outline" size={20} color="#f77" />
+                  <Text style={styles.preferencesTitle}>Thông tin của bạn</Text>
                 </View>
-                <View style={[styles.messageBubble, styles.assistantBubble]}>
-                  <ActivityIndicator size="small" color="#f77" />
+                <View style={styles.preferencesInfo}>
+                  <Text style={styles.preferencesText}>
+                    Mục tiêu: {userPreferences.dailyKcalTarget || 2000} kcal/ngày
+                  </Text>
+                  <Text style={styles.preferencesText}>
+                    Chế độ: {userPreferences.dietType === "vegan" ? "Chay" : userPreferences.dietType === "low_carb" ? "Ít carb" : "Bình thường"}
+                  </Text>
                 </View>
               </View>
             )}
-          </ScrollView>
 
-          {/* Input Section */}
-          <View style={styles.inputContainer}>
-            <TextInput
-              style={styles.input}
-              placeholder="Hỏi về món ăn, công thức, nguyên liệu..."
-              placeholderTextColor="#999"
-              value={inputText}
-              onChangeText={setInputText}
-              multiline
-              maxLength={500}
-              onSubmitEditing={onSendMessage}
-            />
-            <TouchableOpacity
-              style={[
-                styles.sendButton,
-                (!inputText.trim() || chatLoading) && styles.sendButtonDisabled,
-              ]}
-              onPress={onSendMessage}
-              disabled={!inputText.trim() || chatLoading}
-            >
-              <Ionicons
-                name="send"
-                size={20}
-                color={inputText.trim() && !chatLoading ? "#fff" : "#ccc"}
-              />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Filter Section */}
-        <View style={styles.filterSection}>
-          <Text style={styles.filterTitle}>Bộ lọc nhanh</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.filterScroll}
-            contentContainerStyle={styles.filterContent}
-          >
-            <TouchableOpacity
-              style={[
-                styles.filterChip,
-                region === "All" && styles.filterChipActive,
-              ]}
-              onPress={() => setRegion("All")}
-            >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  region === "All" && styles.filterChipTextActive,
-                ]}
-              >
-                Tất cả
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.filterChip,
-                region === "Northern" && styles.filterChipActive,
-              ]}
-              onPress={() => setRegion("Northern")}
-            >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  region === "Northern" && styles.filterChipTextActive,
-                ]}
-              >
-                Miền Bắc
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.filterChip,
-                region === "Central" && styles.filterChipActive,
-              ]}
-              onPress={() => setRegion("Central")}
-            >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  region === "Central" && styles.filterChipTextActive,
-                ]}
-              >
-                Miền Trung
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.filterChip,
-                region === "Southern" && styles.filterChipActive,
-              ]}
-              onPress={() => setRegion("Southern")}
-            >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  region === "Southern" && styles.filterChipTextActive,
-                ]}
-              >
-                Miền Nam
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.filterChip,
-                dietType === "normal" && styles.filterChipActive,
-              ]}
-              onPress={() => setDietType("normal")}
-            >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  dietType === "normal" && styles.filterChipTextActive,
-                ]}
-              >
-                Thông thường
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.filterChip,
-                dietType === "vegan" && styles.filterChipActive,
-              ]}
-              onPress={() => setDietType("vegan")}
-            >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  dietType === "vegan" && styles.filterChipTextActive,
-                ]}
-              >
-                Chay
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.filterChip,
-                dietType === "low_carb" && styles.filterChipActive,
-              ]}
-              onPress={() => setDietType("low_carb")}
-            >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  dietType === "low_carb" && styles.filterChipTextActive,
-                ]}
-              >
-                Ít carb
-              </Text>
-            </TouchableOpacity>
-          </ScrollView>
-
-          {/* Kcal Target */}
-          <View style={styles.kcalContainer}>
-            <Text style={styles.kcalLabel}>Mục tiêu năng lượng:</Text>
-            <View style={styles.kcalControls}>
-              <TouchableOpacity
-                style={styles.kcalButton}
-                onPress={() => setTargetKcal(Math.max(1000, targetKcal - 100))}
-              >
-                <Ionicons name="remove-circle" size={24} color="#f77" />
-              </TouchableOpacity>
-              <Text style={styles.kcalValue}>{targetKcal} kcal</Text>
-              <TouchableOpacity
-                style={styles.kcalButton}
-                onPress={() => setTargetKcal(Math.min(5000, targetKcal + 100))}
-              >
-                <Ionicons name="add-circle" size={24} color="#f77" />
-              </TouchableOpacity>
+            {/* Region Filter */}
+            <View style={styles.filterGroup}>
+              <Text style={styles.filterGroupTitle}>Vùng miền</Text>
+              <View style={styles.filterChipsContainer}>
+                {["All", "Northern", "Central", "Southern"].map((r) => (
+                  <TouchableOpacity
+                    key={r}
+                    style={[
+                      styles.filterChip,
+                      region === r && styles.filterChipActive,
+                    ]}
+                    onPress={() => setRegion(r)}
+                  >
+                    <Text
+                      style={[
+                        styles.filterChipText,
+                        region === r && styles.filterChipTextActive,
+                      ]}
+                    >
+                      {r === "All"
+                        ? "Tất cả"
+                        : r === "Northern"
+                        ? "Miền Bắc"
+                        : r === "Central"
+                        ? "Miền Trung"
+                        : "Miền Nam"}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
-          </View>
 
-          {/* Date Selector */}
-          <View style={styles.dateContainer}>
-            <Text style={styles.dateLabel}>Ngày áp dụng:</Text>
-            <TextInput
-              style={styles.dateInput}
-              value={selectedDate}
-              onChangeText={setSelectedDate}
-              placeholder="YYYY-MM-DD"
-            />
-          </View>
+            {/* Diet Type Filter */}
+            <View style={styles.filterGroup}>
+              <Text style={styles.filterGroupTitle}>Chế độ ăn</Text>
+              <View style={styles.filterChipsContainer}>
+                {[
+                  { key: "normal", label: "Thông thường" },
+                  { key: "vegan", label: "Chay" },
+                  { key: "low_carb", label: "Ít carb" },
+                ].map((d) => (
+                  <TouchableOpacity
+                    key={d.key}
+                    style={[
+                      styles.filterChip,
+                      dietType === d.key && styles.filterChipActive,
+                    ]}
+                    onPress={() => setDietType(d.key)}
+                  >
+                    <Text
+                      style={[
+                        styles.filterChipText,
+                        dietType === d.key && styles.filterChipTextActive,
+                      ]}
+                    >
+                      {d.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
 
-          {/* Suggest Button */}
-          <TouchableOpacity
-            style={[styles.suggestButton, loading && styles.suggestButtonDisabled]}
-            onPress={onSuggest}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="sparkles" size={20} color="#fff" />
-                <Text style={styles.suggestButtonText}>Gợi ý món ăn</Text>
-              </>
-            )}
-          </TouchableOpacity>
-          
-          {/* Add All Button - only show when there are suggestions */}
-          {recipes.length > 0 && (
+            {/* Kcal Target */}
+            <View style={styles.filterGroup}>
+              <Text style={styles.filterGroupTitle}>Mục tiêu năng lượng</Text>
+              <View style={styles.kcalContainer}>
+                <TouchableOpacity
+                  style={styles.kcalButton}
+                  onPress={() => setTargetKcal(Math.max(1000, targetKcal - 100))}
+                >
+                  <Ionicons name="remove-circle" size={28} color="#f77" />
+                </TouchableOpacity>
+                <Text style={styles.kcalValue}>{targetKcal} kcal</Text>
+                <TouchableOpacity
+                  style={styles.kcalButton}
+                  onPress={() => setTargetKcal(Math.min(5000, targetKcal + 100))}
+                >
+                  <Ionicons name="add-circle" size={28} color="#f77" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Suggest Button */}
             <TouchableOpacity
-              style={styles.addAllButton}
-              onPress={handleAddAllToCalendar}
+              style={[
+                styles.suggestButton,
+                loading && styles.suggestButtonDisabled,
+              ]}
+              onPress={onSuggest}
+              disabled={loading}
             >
-              <Ionicons name="calendar" size={18} color="#f77" />
-              <Text style={styles.addAllButtonText}>Thêm tất cả vào lịch</Text>
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="sparkles" size={20} color="#fff" />
+                  <Text style={styles.suggestButtonText}>Gợi ý món ăn</Text>
+                </>
+              )}
             </TouchableOpacity>
-          )}
-        </View>
+          </ScrollView>
+        )}
 
-        {/* Recipes Section */}
+        {/* Recipes Section - Always visible when there are recipes */}
         {recipes.length > 0 && (
           <View style={styles.recipesSection}>
             <View style={styles.recipesHeader}>
               <Text style={styles.recipesTitle}>
-                {recipes.length} món ăn được gợi ý
+                {recipes.length} món được gợi ý
               </Text>
+              <TouchableOpacity
+                onPress={() => setRecipes([])}
+                style={styles.clearButton}
+              >
+                <Ionicons name="close-circle" size={20} color="#999" />
+              </TouchableOpacity>
             </View>
             <FlatList
               data={recipes}
               keyExtractor={(item) => item.id}
               renderItem={renderRecipe}
-              horizontal
-              showsHorizontalScrollIndicator={false}
+              numColumns={2}
+              columnWrapperStyle={styles.recipeRow}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled={true}
               contentContainerStyle={styles.recipesList}
             />
           </View>
         )}
-      </KeyboardAvoidingView>
+      </View>
+
+      {/* Date Picker Modal */}
+      <Modal
+        visible={showDatePicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowDatePicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Chọn ngày</Text>
+              <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              style={styles.dateInputModal}
+              value={selectedDate}
+              onChangeText={setSelectedDate}
+              placeholder="YYYY-MM-DD"
+              keyboardType="numeric"
+            />
+            <TouchableOpacity
+              style={styles.modalConfirmButton}
+              onPress={() => setShowDatePicker(false)}
+            >
+              <Text style={styles.modalConfirmText}>Xác nhận</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <View style={{ marginBottom: 50 }}>
         <TabBar />
       </View>
@@ -741,17 +839,90 @@ const styles = StyleSheet.create({
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#eee",
+    backgroundColor: "#fff",
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: "600",
     color: "#f77",
   },
+  dateBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff5f7",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4,
+  },
+  dateBadgeText: {
+    fontSize: 12,
+    color: "#f77",
+    fontWeight: "600",
+  },
+  tabContainer: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  tab: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    gap: 6,
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
+  },
+  tabActive: {
+    borderBottomColor: "#f77",
+  },
+  tabText: {
+    fontSize: 14,
+    color: "#999",
+    fontWeight: "500",
+  },
+  tabTextActive: {
+    color: "#f77",
+    fontWeight: "600",
+  },
+  chatTabContent: {
+    flex: 1,
+  },
+  quickSuggestionsContainer: {
+    padding: 16,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  quickSuggestionsTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#666",
+    marginBottom: 8,
+  },
+  quickSuggestionsList: {
+    gap: 8,
+  },
+  quickSuggestionChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#fff5f7",
+    borderWidth: 1,
+    borderColor: "#f77",
+    marginRight: 8,
+  },
+  quickSuggestionText: {
+    fontSize: 13,
+    color: "#f77",
+    fontWeight: "500",
+  },
   chatSection: {
     flex: 1,
     backgroundColor: "#f9f9f9",
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
   },
   chatContainer: {
     flex: 1,
@@ -799,6 +970,7 @@ const styles = StyleSheet.create({
   messageText: {
     fontSize: 14,
     lineHeight: 20,
+    flexShrink: 1,
   },
   userMessageText: {
     color: "#fff",
@@ -836,39 +1008,68 @@ const styles = StyleSheet.create({
   sendButtonDisabled: {
     backgroundColor: "#eee",
   },
-  filterSection: {
-    padding: 16,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
+  filterTabContent: {
+    flex: 1,
+    backgroundColor: "#f9f9f9",
   },
-  filterTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#f77",
+  filterTabContentInner: {
+    padding: 16,
+    paddingBottom: 100,
+  },
+  preferencesCard: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#eee",
+  },
+  preferencesHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     marginBottom: 12,
   },
-  filterScroll: {
-    marginBottom: 16,
+  preferencesTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
   },
-  filterContent: {
-    paddingRight: 16,
+  preferencesInfo: {
+    gap: 6,
+  },
+  preferencesText: {
+    fontSize: 14,
+    color: "#666",
+  },
+  filterGroup: {
+    marginBottom: 24,
+  },
+  filterGroupTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 12,
+  },
+  filterChipsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
   },
   filterChip: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 20,
-    backgroundColor: "#f5f5f5",
-    marginRight: 8,
+    backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: "#eee",
+    borderColor: "#ddd",
   },
   filterChipActive: {
     backgroundColor: "#f77",
     borderColor: "#f77",
   },
   filterChipText: {
-    fontSize: 13,
+    fontSize: 14,
     color: "#666",
     fontWeight: "500",
   },
@@ -876,30 +1077,24 @@ const styles = StyleSheet.create({
     color: "#fff",
   },
   kcalContainer: {
-    marginBottom: 16,
-  },
-  kcalLabel: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 8,
-  },
-  kcalControls: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#fff5f7",
+    backgroundColor: "#fff",
     borderRadius: 12,
-    paddingVertical: 12,
+    paddingVertical: 16,
+    borderWidth: 1,
+    borderColor: "#eee",
   },
   kcalButton: {
     padding: 4,
   },
   kcalValue: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "600",
     color: "#f77",
-    marginHorizontal: 20,
-    minWidth: 80,
+    marginHorizontal: 24,
+    minWidth: 100,
     textAlign: "center",
   },
   suggestButton: {
@@ -907,9 +1102,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#f77",
-    paddingVertical: 14,
+    paddingVertical: 16,
     borderRadius: 12,
     gap: 8,
+    marginTop: 8,
   },
   suggestButtonDisabled: {
     opacity: 0.6,
@@ -919,28 +1115,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
-  addAllButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#fff",
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: "#f77",
-    marginTop: 8,
-    gap: 8,
-  },
-  addAllButtonText: {
-    color: "#f77",
-    fontSize: 16,
-    fontWeight: "600",
-  },
   recipesSection: {
-    padding: 16,
+    maxHeight: 400,
     backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#eee",
+    padding: 16,
   },
   recipesHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 12,
   },
   recipesTitle: {
@@ -948,14 +1133,20 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#f77",
   },
+  clearButton: {
+    padding: 4,
+  },
   recipesList: {
-    paddingRight: 16,
+    paddingBottom: 8,
+  },
+  recipeRow: {
+    justifyContent: "space-between",
+    marginBottom: 12,
   },
   recipeCard: {
-    width: 200,
+    width: CARD_WIDTH,
     backgroundColor: "#fff",
     borderRadius: 12,
-    marginRight: 12,
     overflow: "hidden",
     shadowColor: "#000",
     shadowOpacity: 0.1,
@@ -963,71 +1154,26 @@ const styles = StyleSheet.create({
     elevation: 3,
     borderWidth: 1,
     borderColor: "#eee",
-    position: "relative",
-  },
-  recipeActions: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-  },
-  addToCalendarBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fff",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#f77",
-    gap: 4,
-  },
-  addToCalendarText: {
-    fontSize: 12,
-    color: "#f77",
-    fontWeight: "600",
-  },
-  dateContainer: {
-    marginBottom: 12,
-  },
-  dateLabel: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 6,
-  },
-  dateInput: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: "#333",
-    backgroundColor: "#fff",
   },
   recipeImage: {
     width: "100%",
-    height: 140,
+    height: 120,
     resizeMode: "cover",
   },
   recipeContent: {
-    padding: 12,
+    padding: 10,
   },
   recipeTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "600",
     color: "#333",
-    marginBottom: 4,
-  },
-  recipeDesc: {
-    fontSize: 12,
-    color: "#777",
-    marginBottom: 8,
-    lineHeight: 16,
+    marginBottom: 6,
+    minHeight: 36,
   },
   recipeInfo: {
     flexDirection: "row",
+    gap: 8,
     marginBottom: 8,
-    gap: 12,
   },
   recipeInfoItem: {
     flexDirection: "row",
@@ -1035,23 +1181,73 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   recipeInfoText: {
-    fontSize: 12,
+    fontSize: 11,
     color: "#666",
   },
-  tagsContainer: {
+  recipeQuickActions: {
     flexDirection: "row",
-    flexWrap: "wrap",
+    borderTopWidth: 1,
+    borderTopColor: "#eee",
+    paddingTop: 8,
+    paddingHorizontal: 8,
+    paddingBottom: 8,
     gap: 4,
   },
-  tag: {
-    backgroundColor: "#ffeef0",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+  quickActionBtn: {
+    flex: 1,
+    paddingVertical: 6,
+    backgroundColor: "#fff5f7",
     borderRadius: 8,
+    alignItems: "center",
   },
-  tagText: {
-    fontSize: 10,
+  quickActionText: {
+    fontSize: 11,
     color: "#f77",
-    fontWeight: "500",
+    fontWeight: "600",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 40,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#333",
+  },
+  dateInputModal: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: "#333",
+    backgroundColor: "#f9f9f9",
+    marginBottom: 20,
+  },
+  modalConfirmButton: {
+    backgroundColor: "#f77",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  modalConfirmText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });
