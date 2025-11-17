@@ -13,9 +13,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   Dimensions,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { suggestMealApi, suggestMenuApi } from "../api/mealplan";
+import { suggestMealApi, suggestMenuApi, upsertMealPlanApi, patchMealPlanSlotApi, getMealPlansApi } from "../api/mealplan";
+import { chatWithAI, suggestFromChat } from "../api/ai";
 import { useAuth } from "../context/AuthContext";
 import TabBar from "./TabBar";
 
@@ -65,6 +67,7 @@ export default function MealSuggestScreen({ navigation }: any) {
   ]);
   const [inputText, setInputText] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const scrollViewRef = useRef<ScrollView>(null);
   const flatListRef = useRef<FlatList>(null);
 
@@ -78,15 +81,23 @@ export default function MealSuggestScreen({ navigation }: any) {
   const onSuggest = async () => {
     setLoading(true);
     try {
-      const res = await suggestMealApi({ region, dietType, targetKcal });
-      const suggestedRecipes = res.data?.recipes || [];
+      // Use suggestMenuApi to get suggestions WITHOUT persisting (just suggest)
+      const res = await suggestMenuApi({
+        date: selectedDate,
+        slot: "all",
+        region: region !== "All" ? region as "Northern" | "Central" | "Southern" : undefined,
+        vegetarian: dietType === "vegan",
+        persist: false, // Only suggest, don't save to calendar
+      });
+      
+      const suggestedRecipes = res.data?.dishes || [];
       setRecipes(suggestedRecipes);
 
       // Add suggestion message to chat
       const suggestionMessage: Message = {
         id: Date.now().toString(),
         type: "assistant",
-        content: `Tôi đã tìm thấy ${suggestedRecipes.length} món ăn phù hợp với bạn! 🍽️`,
+        content: `Tôi đã tìm thấy ${suggestedRecipes.length} món ăn phù hợp! Bạn có thể xem và chọn món để thêm vào lịch. 🍽️`,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, suggestionMessage]);
@@ -101,6 +112,128 @@ export default function MealSuggestScreen({ navigation }: any) {
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setLoading(false);
+    }
+  };
+  
+  // Add all suggested recipes to calendar
+  const handleAddAllToCalendar = async () => {
+    if (recipes.length === 0) return;
+    
+    try {
+      // Get or create meal plan
+      let mealPlanId: string;
+      try {
+        const plansRes = await getMealPlansApi({ start: selectedDate, end: selectedDate });
+        const plans = plansRes.data || [];
+        const existingPlan = plans.find((p: any) => p.date === selectedDate);
+        
+        if (existingPlan) {
+          mealPlanId = existingPlan.id;
+        } else {
+          const createRes = await upsertMealPlanApi({
+            date: selectedDate,
+            slots: { breakfast: [], lunch: [], dinner: [] },
+          });
+          mealPlanId = createRes.data.id;
+        }
+      } catch (error) {
+        const createRes = await upsertMealPlanApi({
+          date: selectedDate,
+          slots: { breakfast: [], lunch: [], dinner: [] },
+        });
+        mealPlanId = createRes.data.id;
+      }
+      
+      // Distribute recipes to slots (simple logic: first 2 breakfast, next 2 lunch, rest dinner)
+      const breakfastIds = recipes.slice(0, 2).map((r) => r.id);
+      const lunchIds = recipes.slice(2, 4).map((r) => r.id);
+      const dinnerIds = recipes.slice(4).map((r) => r.id);
+      
+      // Add to each slot
+      if (breakfastIds.length > 0) {
+        for (const id of breakfastIds) {
+          await patchMealPlanSlotApi(mealPlanId, { slot: "breakfast", add: id });
+        }
+      }
+      if (lunchIds.length > 0) {
+        for (const id of lunchIds) {
+          await patchMealPlanSlotApi(mealPlanId, { slot: "lunch", add: id });
+        }
+      }
+      if (dinnerIds.length > 0) {
+        for (const id of dinnerIds) {
+          await patchMealPlanSlotApi(mealPlanId, { slot: "dinner", add: id });
+        }
+      }
+      
+      const successMessage: Message = {
+        id: Date.now().toString(),
+        type: "assistant",
+        content: `Đã thêm tất cả ${recipes.length} món vào lịch ngày ${selectedDate}! ✅`,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, successMessage]);
+    } catch (error: any) {
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        type: "assistant",
+        content: "Không thể thêm món vào lịch. Vui lòng thử lại!",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    }
+  };
+  
+  // Add recipe to calendar manually
+  const handleAddToCalendar = async (recipeId: string, slot: "breakfast" | "lunch" | "dinner") => {
+    try {
+      // First, get or create meal plan
+      let mealPlanId: string;
+      try {
+        const plansRes = await getMealPlansApi({ start: selectedDate, end: selectedDate });
+        const plans = plansRes.data || [];
+        const existingPlan = plans.find((p: any) => p.date === selectedDate);
+        
+        if (existingPlan) {
+          mealPlanId = existingPlan.id;
+        } else {
+          // Create new meal plan
+          const createRes = await upsertMealPlanApi({
+            date: selectedDate,
+            slots: { breakfast: [], lunch: [], dinner: [] },
+          });
+          mealPlanId = createRes.data.id;
+        }
+      } catch (error) {
+        // If get fails, create new
+        const createRes = await upsertMealPlanApi({
+          date: selectedDate,
+          slots: { breakfast: [], lunch: [], dinner: [] },
+        });
+        mealPlanId = createRes.data.id;
+      }
+      
+      // Add recipe to slot
+      await patchMealPlanSlotApi(mealPlanId, {
+        slot,
+        add: recipeId,
+      });
+      
+      const successMessage: Message = {
+        id: Date.now().toString(),
+        type: "assistant",
+        content: `Đã thêm món vào ${slot === "breakfast" ? "Bữa Sáng" : slot === "lunch" ? "Bữa Trưa" : "Bữa Tối"} ngày ${selectedDate}! ✅`,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, successMessage]);
+    } catch (error: any) {
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        type: "assistant",
+        content: "Không thể thêm món vào lịch. Vui lòng thử lại!",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
     }
   };
 
@@ -118,18 +251,85 @@ export default function MealSuggestScreen({ navigation }: any) {
     setInputText("");
     setChatLoading(true);
 
-    // TODO: Integrate with AI API when ready
-    // For now, show a placeholder response
-    setTimeout(() => {
-      const aiResponse: Message = {
-        id: (Date.now() + 1).toString(),
+    try {
+      // Build conversation history (last 10 messages)
+      const recentMessages = messages.slice(-10).map((msg) => ({
+        role: msg.type as "user" | "assistant",
+        content: msg.content,
+      }));
+
+      // Check if user is asking for recipe suggestions
+      const userRequest = inputText.trim().toLowerCase();
+      const isRecipeRequest = 
+        userRequest.includes("gợi ý") ||
+        userRequest.includes("suggest") ||
+        userRequest.includes("món") ||
+        userRequest.includes("ăn") ||
+        userRequest.includes("recipe") ||
+        userRequest.includes("thực đơn");
+
+      if (isRecipeRequest) {
+        // Use AI to suggest recipes
+        try {
+          const suggestions = await suggestFromChat(inputText.trim(), selectedDate);
+          const suggestedRecipes = suggestions.dishes || [];
+          
+          if (suggestedRecipes.length > 0) {
+            setRecipes(suggestedRecipes);
+            
+            const aiMessage: Message = {
+              id: Date.now().toString(),
+              type: "assistant",
+              content: `Tôi đã tìm thấy ${suggestedRecipes.length} món ăn phù hợp với yêu cầu của bạn! Bạn có thể xem và chọn món để thêm vào lịch. 🍽️`,
+              timestamp: new Date(),
+            };
+            setMessages((prev) => [...prev, aiMessage]);
+          } else {
+            // Fallback to regular chat
+            const response = await chatWithAI(inputText.trim(), recentMessages);
+            const aiMessage: Message = {
+              id: Date.now().toString(),
+              type: "assistant",
+              content: response.message,
+              timestamp: new Date(),
+            };
+            setMessages((prev) => [...prev, aiMessage]);
+          }
+        } catch (suggestError) {
+          // If suggest fails, fallback to regular chat
+          console.error("Error suggesting recipes:", suggestError);
+          const response = await chatWithAI(inputText.trim(), recentMessages);
+          const aiMessage: Message = {
+            id: Date.now().toString(),
+            type: "assistant",
+            content: response.message,
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, aiMessage]);
+        }
+      } else {
+        // Regular chat
+        const response = await chatWithAI(inputText.trim(), recentMessages);
+        const aiMessage: Message = {
+          id: Date.now().toString(),
+          type: "assistant",
+          content: response.message,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, aiMessage]);
+      }
+    } catch (error: any) {
+      console.error("Error in AI chat:", error);
+      const errorMessage: Message = {
+        id: Date.now().toString(),
         type: "assistant",
-        content: "Tính năng AI đang được phát triển. Hiện tại bạn có thể sử dụng bộ lọc bên dưới để tìm món ăn phù hợp! 🤖",
+        content: error?.response?.data?.message || "Xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại!",
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, aiResponse]);
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
       setChatLoading(false);
-    }, 1000);
+    }
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
@@ -171,48 +371,79 @@ export default function MealSuggestScreen({ navigation }: any) {
   };
 
   const renderRecipe = ({ item }: { item: Recipe }) => (
-    <TouchableOpacity
-      style={styles.recipeCard}
-      onPress={() => navigation.navigate("Details", { item })}
-    >
-      <Image
-        source={{ uri: normalizeImage(item.image) }}
-        style={styles.recipeImage}
-      />
-      <View style={styles.recipeContent}>
-        <Text style={styles.recipeTitle} numberOfLines={2}>
-          {item.title}
-        </Text>
-        {item.description && (
-          <Text style={styles.recipeDesc} numberOfLines={2}>
-            {item.description}
+    <View style={styles.recipeCard}>
+      <TouchableOpacity
+        style={{ flex: 1 }}
+        onPress={() => navigation.navigate("Details", { item })}
+      >
+        <Image
+          source={{ uri: normalizeImage(item.image) }}
+          style={styles.recipeImage}
+        />
+        <View style={styles.recipeContent}>
+          <Text style={styles.recipeTitle} numberOfLines={2}>
+            {item.title}
           </Text>
-        )}
-        <View style={styles.recipeInfo}>
-          <View style={styles.recipeInfoItem}>
-            <Ionicons name="time-outline" size={14} color="#f77" />
-            <Text style={styles.recipeInfoText}>
-              {item.cookTime ?? 30} phút
+          {item.description && (
+            <Text style={styles.recipeDesc} numberOfLines={2}>
+              {item.description}
             </Text>
+          )}
+          <View style={styles.recipeInfo}>
+            <View style={styles.recipeInfoItem}>
+              <Ionicons name="time-outline" size={14} color="#f77" />
+              <Text style={styles.recipeInfoText}>
+                {item.cookTime ?? 30} phút
+              </Text>
+            </View>
+            <View style={styles.recipeInfoItem}>
+              <Ionicons name="flame-outline" size={14} color="#f77" />
+              <Text style={styles.recipeInfoText}>
+                {Math.round(item.totalKcal ?? 0)} kcal
+              </Text>
+            </View>
           </View>
-          <View style={styles.recipeInfoItem}>
-            <Ionicons name="flame-outline" size={14} color="#f77" />
-            <Text style={styles.recipeInfoText}>
-              {Math.round(item.totalKcal ?? 0)} kcal
-            </Text>
-          </View>
+          {item.tags && item.tags.length > 0 && (
+            <View style={styles.tagsContainer}>
+              {item.tags.slice(0, 3).map((tag, idx) => (
+                <View key={idx} style={styles.tag}>
+                  <Text style={styles.tagText}>{tag}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
-        {item.tags && item.tags.length > 0 && (
-          <View style={styles.tagsContainer}>
-            {item.tags.slice(0, 3).map((tag, idx) => (
-              <View key={idx} style={styles.tag}>
-                <Text style={styles.tagText}>{tag}</Text>
-              </View>
-            ))}
-          </View>
-        )}
+      </TouchableOpacity>
+      <View style={styles.recipeActions}>
+        <TouchableOpacity
+          style={styles.addToCalendarBtn}
+          onPress={() => {
+            Alert.alert(
+              "Thêm vào lịch",
+              "Chọn bữa ăn:",
+              [
+                { text: "Hủy", style: "cancel" },
+                {
+                  text: "Bữa Sáng",
+                  onPress: () => handleAddToCalendar(item.id, "breakfast"),
+                },
+                {
+                  text: "Bữa Trưa",
+                  onPress: () => handleAddToCalendar(item.id, "lunch"),
+                },
+                {
+                  text: "Bữa Tối",
+                  onPress: () => handleAddToCalendar(item.id, "dinner"),
+                },
+              ]
+            );
+          }}
+        >
+          <Ionicons name="calendar-outline" size={16} color="#f77" />
+          <Text style={styles.addToCalendarText}>Thêm</Text>
+        </TouchableOpacity>
       </View>
-    </TouchableOpacity>
+    </View>
   );
 
   return (
@@ -430,6 +661,17 @@ export default function MealSuggestScreen({ navigation }: any) {
             </View>
           </View>
 
+          {/* Date Selector */}
+          <View style={styles.dateContainer}>
+            <Text style={styles.dateLabel}>Ngày áp dụng:</Text>
+            <TextInput
+              style={styles.dateInput}
+              value={selectedDate}
+              onChangeText={setSelectedDate}
+              placeholder="YYYY-MM-DD"
+            />
+          </View>
+
           {/* Suggest Button */}
           <TouchableOpacity
             style={[styles.suggestButton, loading && styles.suggestButtonDisabled]}
@@ -441,10 +683,21 @@ export default function MealSuggestScreen({ navigation }: any) {
             ) : (
               <>
                 <Ionicons name="sparkles" size={20} color="#fff" />
-                <Text style={styles.suggestButtonText}>Tìm món ăn</Text>
+                <Text style={styles.suggestButtonText}>Gợi ý món ăn</Text>
               </>
             )}
           </TouchableOpacity>
+          
+          {/* Add All Button - only show when there are suggestions */}
+          {recipes.length > 0 && (
+            <TouchableOpacity
+              style={styles.addAllButton}
+              onPress={handleAddAllToCalendar}
+            >
+              <Ionicons name="calendar" size={18} color="#f77" />
+              <Text style={styles.addAllButtonText}>Thêm tất cả vào lịch</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Recipes Section */}
@@ -666,6 +919,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
+  addAllButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#f77",
+    marginTop: 8,
+    gap: 8,
+  },
+  addAllButtonText: {
+    color: "#f77",
+    fontSize: 16,
+    fontWeight: "600",
+  },
   recipesSection: {
     padding: 16,
     backgroundColor: "#fff",
@@ -693,6 +963,46 @@ const styles = StyleSheet.create({
     elevation: 3,
     borderWidth: 1,
     borderColor: "#eee",
+    position: "relative",
+  },
+  recipeActions: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+  },
+  addToCalendarBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#f77",
+    gap: 4,
+  },
+  addToCalendarText: {
+    fontSize: 12,
+    color: "#f77",
+    fontWeight: "600",
+  },
+  dateContainer: {
+    marginBottom: 12,
+  },
+  dateLabel: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 6,
+  },
+  dateInput: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: "#333",
+    backgroundColor: "#fff",
   },
   recipeImage: {
     width: "100%",
