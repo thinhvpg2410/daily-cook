@@ -26,10 +26,6 @@ export default function TabBar() {
       if (currentRoute.name === "Category" && currentRoute.params?.category) {
         lastCategory.current = currentRoute.params.category;
       }
-
-      if (currentRoute.name === "Details" && currentRoute.params?.item) {
-        lastItem.current = currentRoute.params.item;
-      }
     });
 
     return unsubscribe;
@@ -38,7 +34,7 @@ export default function TabBar() {
   const tabs = [
     { name: "Home", icon: "home" },
     { name: "MealPlan", icon: "layers" },
-    { name: "Details", icon: "book" },
+    { name: "NutritionTracker", icon: "nutrition" },
     { name: "Profile", icon: "person" },
   ];
 
@@ -54,8 +50,6 @@ export default function TabBar() {
               onPress={() => {
                 if (tab.name === "Category") {
                   navigation.navigate("Category", { category: lastCategory.current });
-                } else if (tab.name === "Details") {
-                  navigation.navigate("Details", { item: lastItem.current });
                 } else {
                   navigation.navigate(tab.name);
                 }

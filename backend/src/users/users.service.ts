@@ -53,9 +53,28 @@ export class UsersService {
   }
 
   async getPreferences(userId: string) {
-    return this.prisma.userPreference.findUnique({
+    const preferences = await this.prisma.userPreference.findUnique({
       where: { userId },
     });
+    
+    // Return default preferences if not found
+    if (!preferences) {
+      return {
+        userId,
+        dailyKcalTarget: 2000,
+        gender: null,
+        age: null,
+        height: null,
+        weight: null,
+        activity: null,
+        goal: null,
+        dietType: null,
+        dislikedIngredients: [],
+        likedTags: [],
+      };
+    }
+    
+    return preferences;
   }
 
   async updatePreferences(userId: string, dto: any) {
