@@ -7,6 +7,7 @@ import { ConfigModule } from "@nestjs/config";
 import { MealPlanModule } from "./mealplan/mealplan.module";
 import { ShoppingListModule } from "./shopping-list/shopping-list.module";
 import { FoodLogModule } from "./food-log/food-log.module";
+import { AIModule } from "./ai/ai.module";
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { FoodLogModule } from "./food-log/food-log.module";
     MealPlanModule,
     ShoppingListModule,
     FoodLogModule,
+    AIModule,
   ],
 })
 export class AppModule {}
