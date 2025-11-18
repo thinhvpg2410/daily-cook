@@ -86,28 +86,40 @@ export class AIService {
       };
 
       // Build system prompt
-      const systemPrompt = `Bạn là trợ lý AI thông minh của DailyCook - ứng dụng quản lý bữa ăn và dinh dưỡng Việt Nam.
+      const systemPrompt = `Bạn là trợ lý AI thông minh và chuyên nghiệp của DailyCook - ứng dụng quản lý bữa ăn và dinh dưỡng Việt Nam. Bạn hoạt động như một chuyên gia dinh dưỡng và đầu bếp thực thụ.
 
-Nhiệm vụ của bạn:
-1. Hiểu yêu cầu của người dùng về món ăn, thực đơn
-2. Gợi ý món ăn phù hợp dựa trên preferences của họ
-3. Trả lời tự nhiên, thân thiện bằng tiếng Việt
-4. Khi gợi ý món ăn, hãy liệt kê TÊN CỤ THỂ các món ăn Việt Nam phù hợp
+NHIỆM VỤ CỦA BẠN:
+1. Hiểu yêu cầu của người dùng về món ăn, thực đơn một cách chính xác
+2. Khi người dùng yêu cầu gợi ý món ăn, hãy hỏi thông tin đầy đủ để đưa ra gợi ý phù hợp:
+   - Số lượng món muốn (ví dụ: 3 món, 5 món, một vài món)
+   - Buổi ăn (sáng/trưa/tối/cả ngày)
+   - Chế độ ăn (ăn chay/bình thường/eat-clean/diet)
+   - Bất kỳ yêu cầu đặc biệt nào
+3. Nếu thiếu thông tin quan trọng, hãy hỏi một cách thân thiện và cụ thể
+4. Trả lời tự nhiên, thân thiện, chuyên nghiệp bằng tiếng Việt
+5. Khi gợi ý món ăn, hãy liệt kê TÊN CỤ THỂ các món ăn Việt Nam phù hợp
 
-Thông tin người dùng:
-- Chế độ ăn: ${userContext.preferences?.dietType || "bình thường"}
+THÔNG TIN NGƯỜI DÙNG:
+- Chế độ ăn mặc định: ${userContext.preferences?.dietType || "bình thường"}
 - Mục tiêu calo/ngày: ${userContext.preferences?.dailyKcalTarget || 2000} kcal
 - Mục tiêu: ${userContext.preferences?.goal === "lose_weight" ? "Giảm cân" : userContext.preferences?.goal === "gain_muscle" ? "Tăng cơ" : "Duy trì"}
 - Không thích: ${userContext.preferences?.dislikedIngredients?.join(", ") || "Không có"}
 - Thích: ${userContext.preferences?.likedTags?.join(", ") || "Không có"}
 - Đã có ${userContext.recentMealPlans} meal plans gần đây
 
+VÍ DỤ CÂU HỎI KHI THIẾU THÔNG TIN:
+- "Bạn muốn gợi ý món cho buổi nào (sáng/trưa/tối)?"
+- "Bạn muốn bao nhiêu món? (ví dụ: 3 món, 5 món)"
+- "Bạn đang ăn chay hay bình thường?"
+- "Bạn muốn món eat-clean, diet hay bình thường?"
+
 QUAN TRỌNG:
 - Trả lời ngắn gọn, mỗi dòng không quá 50 ký tự để dễ đọc trên mobile
 - Khi gợi ý món ăn, hãy liệt kê TÊN CỤ THỂ các món (ví dụ: "Phở bò", "Bún chả", "Cơm tấm", "Bánh mì")
 - Đề xuất 3-5 món ăn Việt Nam phù hợp với yêu cầu
 - Sử dụng dấu gạch đầu dòng (-) hoặc số (1. 2. 3.) để liệt kê món ăn
-- Giữ câu trả lời ngắn gọn, dễ đọc trên màn hình nhỏ`;
+- Giữ câu trả lời ngắn gọn, dễ đọc trên màn hình nhỏ
+- Luôn ưu tiên sức khỏe và dinh dưỡng của người dùng`;
 
       // Build conversation history
       const history = conversationHistory.map((msg) => ({
@@ -164,21 +176,80 @@ QUAN TRỌNG:
     }
 
     try {
-      // Parse user request để extract thông tin
-      const parsePrompt = `Bạn là một parser chuyên nghiệp. Phân tích yêu cầu của người dùng và trả về JSON với format:
+      // Lấy user preferences để làm context
+      const userPrefs = await this.prisma.userPreference.findUnique({
+        where: { userId },
+      });
+
+      // Build context cho AI parser
+      const userContext = {
+        dietType: userPrefs?.dietType || "normal",
+        goal: userPrefs?.goal || "maintain",
+        dislikedIngredients: userPrefs?.dislikedIngredients || [],
+        likedTags: userPrefs?.likedTags || [],
+        dailyKcalTarget: userPrefs?.dailyKcalTarget || 2000,
+      };
+
+      // Parse user request để extract thông tin với context đầy đủ
+      const parsePrompt = `Bạn là một parser thông minh và chuyên nghiệp. Phân tích yêu cầu của người dùng và trả về JSON với format chính xác:
+
 {
-  "region": "Northern" | "Central" | "Southern" | null,
-  "dietType": "normal" | "vegan" | "vegetarian" | "low_carb" | null,
-  "slot": "breakfast" | "lunch" | "dinner" | "all" | null,
-  "maxCookTime": number | null,
-  "includeStarter": boolean,
-  "includeDessert": boolean,
-  "excludeIngredients": string[]
+  "recipeCount": number | null,  // Số lượng món ăn (nếu không có: null, default sẽ là 3-5 món)
+  "slot": "breakfast" | "lunch" | "dinner" | "all" | null,  // Buổi ăn: sáng/trưa/tối/tất cả
+  "dietMode": "normal" | "vegan" | "vegetarian" | "low_carb" | "eat_clean" | "diet" | null,  // Chế độ ăn
+  "region": "Northern" | "Central" | "Southern" | null,  // Vùng miền
+  "maxCookTime": number | null,  // Thời gian nấu tối đa (phút)
+  "includeStarter": boolean,  // Có món khai vị không
+  "includeDessert": boolean,  // Có món tráng miệng không
+  "excludeIngredients": string[],  // Nguyên liệu cần tránh
+  "needsClarification": boolean,  // Có cần hỏi thêm không
+  "clarificationQuestion": string | null  // Câu hỏi cần làm rõ (nếu có)
 }
 
-Yêu cầu người dùng: "${userRequest}"
+THÔNG TIN NGƯỜI DÙNG HIỆN TẠI:
+- Chế độ ăn mặc định: ${userContext.dietType}
+- Mục tiêu: ${userContext.goal === "lose_weight" ? "Giảm cân" : userContext.goal === "gain_muscle" ? "Tăng cơ" : "Duy trì"}
+- Không thích: ${userContext.dislikedIngredients.join(", ") || "Không có"}
+- Thích: ${userContext.likedTags.join(", ") || "Không có"}
 
-Chỉ trả về JSON, không có text khác.`;
+QUY TẮC PHÂN TÍCH:
+1. **Số lượng món (recipeCount)**:
+   - Tìm số lượng cụ thể: "3 món", "5 món", "một vài món" (2-3), "nhiều món" (5-7)
+   - Nếu không có: null (sẽ dùng default 3-5 món)
+
+2. **Buổi ăn (slot)**:
+   - "sáng", "breakfast", "bữa sáng" → "breakfast"
+   - "trưa", "lunch", "bữa trưa" → "lunch"
+   - "tối", "dinner", "bữa tối", "chiều" → "dinner"
+   - "cả ngày", "tất cả", "all" → "all"
+   - Nếu không rõ: null (sẽ dùng default "all")
+
+3. **Chế độ ăn (dietMode)**:
+   - "chay", "vegan", "thuần chay" → "vegan"
+   - "ăn chay" (có thể có trứng/sữa) → "vegetarian"
+   - "ít carb", "low carb", "low-carb" → "low_carb"
+   - "eat clean", "ăn sạch", "healthy", "lành mạnh" → "eat_clean"
+   - "diet", "ăn kiêng", "giảm cân", "ít calo" → "diet"
+   - "bình thường", "thường" → "normal"
+   - Nếu không có, dùng giá trị từ user context: "${userContext.dietType}"
+
+4. **Vùng miền (region)**:
+   - "miền Bắc", "Bắc", "Hà Nội" → "Northern"
+   - "miền Trung", "Trung", "Huế", "Đà Nẵng" → "Central"
+   - "miền Nam", "Nam", "Sài Gòn", "TP.HCM" → "Southern"
+   - Nếu không có: null
+
+5. **Thời gian nấu (maxCookTime)**:
+   - Tìm số kèm "phút", "min", "giờ"
+   - Nếu không có: null
+
+6. **Cần làm rõ (needsClarification)**:
+   - true nếu thiếu thông tin quan trọng (ví dụ: không biết buổi nào, không biết số lượng)
+   - false nếu đủ thông tin hoặc có thể dùng defaults
+
+YÊU CẦU NGƯỜI DÙNG: "${userRequest}"
+
+CHỈ TRẢ VỀ JSON, KHÔNG CÓ TEXT HAY MARKDOWN KHÁC.`;
 
       const parseResult = await this.model.generateContent(parsePrompt);
       const parseText = parseResult.response.text();
@@ -192,25 +263,58 @@ Chỉ trả về JSON, không có text khác.`;
         }
       } catch (e) {
         console.error("Error parsing AI response:", e);
+        console.error("Raw AI response:", parseText);
         // Fallback to default
-        parsedData = {};
+        parsedData = {
+          needsClarification: true,
+          clarificationQuestion: "Tôi cần thêm thông tin để gợi ý phù hợp. Bạn muốn món cho buổi nào và số lượng bao nhiêu món?",
+        };
       }
+
+      // Nếu cần làm rõ, trả về response để hỏi user
+      if (parsedData.needsClarification && parsedData.clarificationQuestion) {
+        return {
+          date: date || new Date().toISOString().split("T")[0],
+          slot: parsedData.slot || "all",
+          dishes: [],
+          totalKcal: 0,
+          dailyKcalTarget: userContext.dailyKcalTarget,
+          withinLimit: true,
+          needsClarification: true,
+          clarificationQuestion: parsedData.clarificationQuestion,
+        };
+      }
+
+      // Xác định vegetarian từ dietMode
+      const vegetarian =
+        parsedData.dietMode === "vegan" ||
+        parsedData.dietMode === "vegetarian";
+
+      // Xác định chế độ ăn: eat_clean và diet cần filter calories
+      const isDietMode = parsedData.dietMode === "diet";
+      const isEatClean = parsedData.dietMode === "eat_clean";
 
       // Gọi mealplan service để suggest
       const targetDate = date || new Date().toISOString().split("T")[0];
-      const suggestions = await this.mealPlanService.suggestMenu(userId, {
-        date: targetDate,
-        slot: parsedData.slot || "all",
-        region: parsedData.region,
-        vegetarian:
-          parsedData.dietType === "vegan" ||
-          parsedData.dietType === "vegetarian",
-        maxCookTime: parsedData.maxCookTime,
-        includeStarter: parsedData.includeStarter || false,
-        includeDessert: parsedData.includeDessert || false,
-        excludeIngredientNames: parsedData.excludeIngredients?.join(",") || "",
-        persist: false, // Chỉ suggest, không lưu
-      });
+      const suggestions = await this.mealPlanService.suggestMenu(
+        userId,
+        {
+          date: targetDate,
+          slot: parsedData.slot || "all",
+          region: parsedData.region || (userContext.likedTags.find((t: string) =>
+            ["Northern", "Central", "Southern"].includes(t)
+          ) as "Northern" | "Central" | "Southern" | undefined),
+          vegetarian,
+          maxCookTime: parsedData.maxCookTime,
+          includeStarter: parsedData.includeStarter || false,
+          includeDessert: parsedData.includeDessert || false,
+          excludeIngredientNames: parsedData.excludeIngredients?.join(",") || "",
+          persist: false, // Chỉ suggest, không lưu
+        },
+        parsedData.recipeCount, // Pass recipe count
+        isDietMode, // Pass diet mode flag
+        isEatClean, // Pass eat-clean mode flag
+      );
 
       return suggestions;
     } catch (error: any) {

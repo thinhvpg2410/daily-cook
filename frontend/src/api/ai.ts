@@ -12,6 +12,7 @@ export interface ChatResponse {
 
 export interface SuggestFromChatResponse {
   date: string;
+  slot?: "breakfast" | "lunch" | "dinner" | "all";
   dishes: Array<{
     id: string;
     title: string;
@@ -19,8 +20,13 @@ export interface SuggestFromChatResponse {
     cookTime?: number | null;
     likes?: number | null;
     tags?: string[];
+    totalKcal?: number | null;
   }>;
   totalKcal?: number;
+  dailyKcalTarget?: number;
+  withinLimit?: boolean;
+  needsClarification?: boolean;
+  clarificationQuestion?: string;
 }
 
 /**
