@@ -28,6 +28,7 @@ import {
 } from "../api/food-log";
 import { searchRecipesApi, Recipe } from "../api/recipes";
 import { getPreferencesApi } from "../api/users";
+import { getDailyNutritionApi } from "../api/mealplan";
 
 const PLACEHOLDER_IMG =
   "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?q=80&w=1200&auto=format&fit=crop";
@@ -53,6 +54,16 @@ export default function NutritionTracker({ navigation }: any) {
   const [calorieTarget, setCalorieTarget] = useState<number>(2000);
   const [selectedMealType, setSelectedMealType] = useState<"breakfast" | "lunch" | "dinner" | "snack">("breakfast");
   const [editingLog, setEditingLog] = useState<FoodLog | null>(null);
+  const [planNutrition, setPlanNutrition] = useState<{
+    date: string;
+    hasPlan: boolean;
+    totals: { calories: number; protein: number; fat: number; carbs: number };
+    meals: {
+      breakfast: any[];
+      lunch: any[];
+      dinner: any[];
+    };
+  } | null>(null);
 
   const formatDate = (date: Date): string => {
     const year = date.getFullYear();
@@ -123,6 +134,17 @@ export default function NutritionTracker({ navigation }: any) {
     }
   };
 
+  const loadPlanNutrition = async (date?: string) => {
+    try {
+      const targetDate = date || formatDate(new Date());
+      const res = await getDailyNutritionApi({ date: targetDate });
+      setPlanNutrition(res.data);
+    } catch (error) {
+      console.error("Error loading plan nutrition:", error);
+      setPlanNutrition(null);
+    }
+  };
+
   useEffect(() => {
     const initialize = async () => {
       try {
@@ -130,6 +152,7 @@ export default function NutritionTracker({ navigation }: any) {
           loadUserPreferences(),
           loadStats(),
           loadFoodLogs(),
+          loadPlanNutrition(),
         ]);
       } catch (error) {
         console.error("Error initializing nutrition tracker:", error);
@@ -160,7 +183,13 @@ export default function NutritionTracker({ navigation }: any) {
 
   const onRefresh = () => {
     setRefreshing(true);
-    Promise.all([loadUserPreferences(), loadStats(), loadFoodLogs(selectedDate || undefined)]).finally(() => {
+    const date = selectedDate || undefined;
+    Promise.all([
+      loadUserPreferences(),
+      loadStats(),
+      loadFoodLogs(date),
+      loadPlanNutrition(date),
+    ]).finally(() => {
       setRefreshing(false);
     });
   };
@@ -215,6 +244,7 @@ export default function NutritionTracker({ navigation }: any) {
     setSelectedDate(dateStr);
     setShowDetailModal(true);
     loadFoodLogs(dateStr);
+    loadPlanNutrition(dateStr);
   };
 
   const getTodayStats = () => {
@@ -229,6 +259,12 @@ export default function NutritionTracker({ navigation }: any) {
   };
 
   const todayStats = getTodayStats();
+  const planTotals =
+    planNutrition?.date === formatDate(new Date()) ? planNutrition?.totals : null;
+  const displayToday =
+    todayStats.calories > 0
+      ? todayStats
+      : planTotals || { calories: 0, protein: 0, fat: 0, carbs: 0 };
   const history = stats?.daily || [];
   const avg = stats?.average || { calories: 0, protein: 0, fat: 0, carbs: 0 };
 
@@ -267,7 +303,10 @@ export default function NutritionTracker({ navigation }: any) {
     return labels[type] || type;
   };
 
-  const calorieProgress = Math.min((todayStats.calories / calorieTarget) * 100, 100);
+  const calorieProgress = Math.min(
+    (displayToday.calories / calorieTarget) * 100,
+    100,
+  );
 
   if (loading) {
     return (
@@ -316,23 +355,58 @@ export default function NutritionTracker({ navigation }: any) {
               <View style={[s.progressFill, { width: `${calorieProgress}%` }]} />
             </View>
             <Text style={s.progressText}>
-              {Math.round(todayStats.calories)} / {calorieTarget} kcal
+              {Math.round(displayToday.calories)} / {calorieTarget} kcal
             </Text>
           </View>
           <View style={s.macroRow}>
             <View style={s.macroItem}>
               <Text style={s.macroLabel}>Protein</Text>
-              <Text style={s.macroValue}>{Math.round(todayStats.protein)}g</Text>
+              <Text style={s.macroValue}>{Math.round(displayToday.protein)}g</Text>
             </View>
             <View style={s.macroItem}>
               <Text style={s.macroLabel}>Carbs</Text>
-              <Text style={s.macroValue}>{Math.round(todayStats.carbs)}g</Text>
+              <Text style={s.macroValue}>{Math.round(displayToday.carbs)}g</Text>
             </View>
             <View style={s.macroItem}>
               <Text style={s.macroLabel}>Fat</Text>
-              <Text style={s.macroValue}>{Math.round(todayStats.fat)}g</Text>
+              <Text style={s.macroValue}>{Math.round(displayToday.fat)}g</Text>
             </View>
           </View>
+
+        {planNutrition?.hasPlan && (
+          <View style={[s.card, { backgroundColor: "#f0f7ff" }]}>
+            <Text style={s.summaryText}>
+              Thực đơn ngày{" "}
+              {planNutrition.date === formatDate(new Date())
+                ? "hôm nay"
+                : formatDateDisplay(planNutrition.date)}
+            </Text>
+            <Text style={s.planLabel}>
+              Tổng: {Math.round(planNutrition.totals.calories)} kcal · P{" "}
+              {Math.round(planNutrition.totals.protein)}g · C{" "}
+              {Math.round(planNutrition.totals.carbs)}g · F{" "}
+              {Math.round(planNutrition.totals.fat)}g
+            </Text>
+            <View style={s.planMealsRow}>
+              {(["breakfast", "lunch", "dinner"] as const).map((slot) => (
+                <View key={slot} style={s.planMeal}>
+                  <Text style={s.planMealLabel}>
+                    {slot === "breakfast" ? "Sáng" : slot === "lunch" ? "Trưa" : "Tối"}
+                  </Text>
+                  <Text style={s.planMealValue}>
+                    {Math.round(
+                      (planNutrition.meals[slot] || []).reduce(
+                        (sum, meal) => sum + (meal.kcal || 0),
+                        0,
+                      ),
+                    )}{" "}
+                    kcal
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
         </View>
 
         {/* Trung bình */}
@@ -550,7 +624,32 @@ export default function NutritionTracker({ navigation }: any) {
                 </View>
               )}
               ListEmptyComponent={
-                <Text style={{ textAlign: "center", color: "#999", marginTop: 20 }}>Chưa có món ăn nào</Text>
+                planNutrition?.date === selectedDate && planNutrition?.hasPlan ? (
+                  <View style={{ paddingVertical: 20 }}>
+                    <Text style={{ textAlign: "center", color: "#666", marginBottom: 8 }}>
+                      Chưa ghi nhận món ăn. Đây là thực đơn đã lên kế hoạch:
+                    </Text>
+                    {(["breakfast", "lunch", "dinner"] as const).map((slot) => (
+                      <View key={slot} style={{ marginBottom: 6 }}>
+                        <Text style={{ fontWeight: "600", color: "#f77" }}>
+                          {getMealTypeLabel(slot)}
+                        </Text>
+                        {(planNutrition.meals[slot] || []).map((meal: any) => (
+                          <Text key={meal.id} style={{ color: "#444", marginLeft: 8 }}>
+                            • {meal.title} ({Math.round(meal.kcal)} kcal)
+                          </Text>
+                        ))}
+                        {planNutrition.meals[slot]?.length === 0 && (
+                          <Text style={{ color: "#999", marginLeft: 8 }}>Không có món</Text>
+                        )}
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={{ textAlign: "center", color: "#999", marginTop: 20 }}>
+                    Chưa có món ăn nào
+                  </Text>
+                )
               }
             />
           </View>
@@ -623,6 +722,17 @@ const s = StyleSheet.create({
   macroItem: { alignItems: "center" },
   macroLabel: { fontSize: 12, color: "#777", marginBottom: 4 },
   macroValue: { fontSize: 16, fontWeight: "600", color: "#333" },
+  planLabel: { fontSize: 13, color: "#333", textAlign: "center" },
+  planMealsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "100%",
+    marginTop: 12,
+    gap: 8,
+  },
+  planMeal: { flex: 1, alignItems: "center" },
+  planMealLabel: { fontSize: 13, color: "#666", marginBottom: 4 },
+  planMealValue: { fontSize: 15, fontWeight: "600", color: "#1c5ed6" },
 
   sectionTitle: { fontSize: 16, fontWeight: "600", color: "#f77", marginTop: 8, marginBottom: 10 },
 

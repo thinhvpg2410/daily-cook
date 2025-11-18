@@ -154,6 +154,91 @@ export class MealPlanService {
     }));
   }
 
+  async getDailyNutrition(userId: string, dateStr?: string) {
+    const normalizedDate = dateStr?.trim()
+      ? dateStr
+      : formatISO(new Date(), { representation: "date" });
+    const targetDate = this.asDate(normalizedDate);
+
+    const plan = await this.prisma.mealPlan.findUnique({
+      where: { userId_date: { userId, date: targetDate } },
+    });
+
+    if (!plan) {
+      return {
+        date: normalizedDate,
+        hasPlan: false,
+        meals: { breakfast: [], lunch: [], dinner: [] },
+        totals: { calories: 0, protein: 0, fat: 0, carbs: 0 },
+      };
+    }
+
+    const slots = this.normalizeSlots(plan.slots as any);
+    const recipeIds = [
+      ...(slots.breakfast ?? []),
+      ...(slots.lunch ?? []),
+      ...(slots.dinner ?? []),
+    ];
+
+    if (!recipeIds.length) {
+      return {
+        date: normalizedDate,
+        hasPlan: true,
+        meals: { breakfast: [], lunch: [], dinner: [] },
+        totals: { calories: 0, protein: 0, fat: 0, carbs: 0 },
+      };
+    }
+
+    const recipes = await this.prisma.recipe.findMany({
+      where: { id: { in: recipeIds } },
+      select: {
+        id: true,
+        title: true,
+        image: true,
+        totalKcal: true,
+        protein: true,
+        fat: true,
+        carbs: true,
+      },
+    });
+    const recipeMap = new Map(recipes.map((r) => [r.id, r]));
+
+    const mapMeals = (ids: string[]) =>
+      ids
+        .map((id) => recipeMap.get(id))
+        .filter(Boolean)
+        .map((r) => ({
+          id: r!.id,
+          title: r!.title,
+          image: r!.image,
+          kcal: r!.totalKcal ?? 0,
+          protein: r!.protein ?? 0,
+          fat: r!.fat ?? 0,
+          carbs: r!.carbs ?? 0,
+        }));
+
+    const breakfast = mapMeals(slots.breakfast ?? []);
+    const lunch = mapMeals(slots.lunch ?? []);
+    const dinner = mapMeals(slots.dinner ?? []);
+
+    const totals = [...breakfast, ...lunch, ...dinner].reduce(
+      (acc, meal) => ({
+        calories: acc.calories + (meal.kcal ?? 0),
+        protein: acc.protein + (meal.protein ?? 0),
+        fat: acc.fat + (meal.fat ?? 0),
+        carbs: acc.carbs + (meal.carbs ?? 0),
+      }),
+      { calories: 0, protein: 0, fat: 0, carbs: 0 },
+    );
+
+    return {
+      date: normalizedDate,
+      hasPlan: true,
+      meals: { breakfast, lunch, dinner },
+      totals,
+    };
+  }
+
   async upsert(userId: string, dto: CreateMealPlanDto) {
     const date = this.asDate(dto.date);
     const exists = await this.prisma.mealPlan.findFirst({

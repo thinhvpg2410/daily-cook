@@ -37,6 +37,17 @@ export class MealPlanController {
     return this.s.getRange(u.userId, q);
   }
 
+  @Get("nutrition/daily")
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: "Lấy dinh dưỡng dựa trên thực đơn hằng ngày" })
+  @ApiQuery({ name: "date", required: false, description: "Ngày (YYYY-MM-DD). Mặc định hôm nay." })
+  getDailyNutrition(
+    @CurrentUser() u: any,
+    @Query("date") date?: string,
+  ) {
+    return this.s.getDailyNutrition(u.userId, date);
+  }
+
   @Put()
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: "Tạo hoặc cập nhật kế hoạch bữa ăn" })

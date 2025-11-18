@@ -69,3 +69,7 @@ export const patchMealPlanSlotApi = (
 export const getMealPlanApi = (id: string) => {
     return http.get(`/mealplans/${id}`);
 };
+
+export const getDailyNutritionApi = (params?: { date?: string }) => {
+    return http.get("/mealplans/nutrition/daily", { params });
+};
