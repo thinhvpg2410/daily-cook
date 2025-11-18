@@ -51,3 +51,32 @@ export const suggestFromChat = async (
   return res.data;
 };
 
+/**
+ * Tính toán năng lượng và macros phù hợp dựa trên thông tin cá nhân
+ */
+export interface CalculateCalorieGoalParams {
+  gender: "male" | "female";
+  age: number;
+  height: number; // cm
+  weight: number; // kg
+  activity: "low" | "medium" | "high";
+  goal: "lose_weight" | "maintain" | "gain_muscle";
+}
+
+export interface CalculateCalorieGoalResponse {
+  bmr: number;
+  tdee: number;
+  dailyKcalTarget: number;
+  protein: number;
+  fat: number;
+  carbs: number;
+  explanation: string;
+}
+
+export const calculateCalorieGoal = async (
+  params: CalculateCalorieGoalParams
+): Promise<CalculateCalorieGoalResponse> => {
+  const res = await http.post<CalculateCalorieGoalResponse>("/ai/calculate-calorie-goal", params);
+  return res.data;
+};
+

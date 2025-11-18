@@ -220,4 +220,141 @@ Chỉ trả về JSON, không có text khác.`;
       );
     }
   }
+
+  /**
+   * Tính toán năng lượng và macros phù hợp dựa trên thông tin cá nhân
+   */
+  async calculateCalorieGoal(
+    userId: string,
+    gender: "male" | "female",
+    age: number,
+    height: number,
+    weight: number,
+    activity: "low" | "medium" | "high",
+    goal: "lose_weight" | "maintain" | "gain_muscle",
+  ) {
+    if (!this.model) {
+      throw new BadRequestException("AI service is not configured.");
+    }
+
+    try {
+      // Tính toán BMR (Basal Metabolic Rate) - Mifflin-St Jeor Equation
+      let bmr: number;
+      if (gender === "male") {
+        bmr = 10 * weight + 6.25 * height - 5 * age + 5;
+      } else {
+        bmr = 10 * weight + 6.25 * height - 5 * age - 161;
+      }
+
+      // Tính toán TDEE (Total Daily Energy Expenditure)
+      const multipliers: Record<string, number> = {
+        low: 1.2,
+        medium: 1.55,
+        high: 1.725,
+      };
+      const tdee = Math.round(bmr * (multipliers[activity] || 1.2));
+
+      // Tính toán mục tiêu calories dựa trên goal
+      const adjustments: Record<string, number> = {
+        lose_weight: -500,
+        maintain: 0,
+        gain_muscle: 300,
+      };
+      const baseTarget = Math.round(tdee + (adjustments[goal] || 0));
+      const calorieTarget = Math.max(1200, baseTarget);
+
+      // Build prompt cho AI để tính toán macros chính xác hơn
+      const prompt = `Bạn là chuyên gia dinh dưỡng. Dựa trên thông tin sau, hãy tính toán và đưa ra mục tiêu năng lượng và macros (protein, fat, carbs) phù hợp.
+
+Thông tin:
+- Giới tính: ${gender === "male" ? "Nam" : "Nữ"}
+- Tuổi: ${age}
+- Chiều cao: ${height} cm
+- Cân nặng: ${weight} kg
+- Mức độ hoạt động: ${activity === "low" ? "Ít vận động" : activity === "medium" ? "Vận động vừa" : "Vận động nhiều"}
+- Mục tiêu: ${goal === "lose_weight" ? "Giảm cân" : goal === "maintain" ? "Duy trì" : "Tăng cơ"}
+- BMR (Basal Metabolic Rate): ${Math.round(bmr)} kcal
+- TDEE (Total Daily Energy Expenditure): ${tdee} kcal
+- Calorie target cơ bản: ${calorieTarget} kcal
+
+Hãy trả về JSON với format:
+{
+  "dailyKcalTarget": number, // Mục tiêu calories/ngày (có thể điều chỉnh từ base target)
+  "protein": number, // gram protein/ngày
+  "fat": number, // gram fat/ngày
+  "carbs": number, // gram carbs/ngày
+  "explanation": string // Giải thích ngắn gọn (1-2 câu) bằng tiếng Việt
+}
+
+Lưu ý:
+- dailyKcalTarget nên trong khoảng hợp lý (1200-4000 kcal)
+- Protein: 0.8-2.2g/kg cân nặng tùy mục tiêu
+- Fat: 20-35% tổng calories
+- Carbs: phần còn lại
+- Tổng: protein*4 + fat*9 + carbs*4 ≈ dailyKcalTarget
+
+Chỉ trả về JSON, không có text khác.`;
+
+      const result = await this.model.generateContent(prompt);
+      const responseText = result.response.text();
+
+      // Extract JSON from response
+      let aiResult: any;
+      try {
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          aiResult = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error("No JSON found in AI response");
+        }
+      } catch (e) {
+        console.error("Error parsing AI response:", e);
+        // Fallback to calculated values
+        let proteinPercent = 0.3;
+        let fatPercent = 0.25;
+        let carbsPercent = 0.45;
+
+        if (goal === "lose_weight") {
+          proteinPercent = 0.35;
+          carbsPercent = 0.40;
+        } else if (goal === "gain_muscle") {
+          proteinPercent = 0.35;
+          fatPercent = 0.20;
+        }
+
+        const protein = Math.round((calorieTarget * proteinPercent) / 4);
+        const fat = Math.round((calorieTarget * fatPercent) / 9);
+        const carbs = Math.round((calorieTarget * carbsPercent) / 4);
+
+        aiResult = {
+          dailyKcalTarget: calorieTarget,
+          protein,
+          fat,
+          carbs,
+          explanation: "Đã tính toán dựa trên công thức chuẩn.",
+        };
+      }
+
+      // Validate và đảm bảo giá trị hợp lý
+      const finalTarget = Math.max(1200, Math.min(4000, Math.round(aiResult.dailyKcalTarget || calorieTarget)));
+      const finalProtein = Math.max(50, Math.round(aiResult.protein || 150));
+      const finalFat = Math.max(30, Math.round(aiResult.fat || 50));
+      const finalCarbs = Math.max(100, Math.round(aiResult.carbs || 200));
+
+      return {
+        bmr: Math.round(bmr),
+        tdee,
+        dailyKcalTarget: finalTarget,
+        protein: finalProtein,
+        fat: finalFat,
+        carbs: finalCarbs,
+        explanation: aiResult.explanation || "Đã tính toán mục tiêu dinh dưỡng phù hợp với bạn.",
+      };
+    } catch (error: any) {
+      console.error("Error in AI calorie calculation:", error);
+      throw new BadRequestException(
+        `AI calculation error: ${error.message || "Unknown error"}. Please check your API key and ensure gemini-2.0-flash is available.`,
+      );
+    }
+  }
 }

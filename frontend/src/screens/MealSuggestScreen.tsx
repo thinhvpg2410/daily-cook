@@ -86,12 +86,21 @@ export default function MealSuggestScreen({ navigation }: any) {
   const scrollViewRef = useRef<ScrollView>(null);
   const flatListRef = useRef<FlatList>(null);
 
-  // Load user preferences on mount
+  // Load user preferences on mount and when screen is focused
   useEffect(() => {
     loadUserPreferences();
     // Auto-suggest based on current time
     autoSuggestBasedOnTime();
   }, []);
+
+  // Reload preferences when screen is focused (e.g., after updating in NutritionGoalsScreen)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadUserPreferences();
+    });
+
+    return unsubscribe;
+  }, [navigation]);
 
   // Load user preferences
   const loadUserPreferences = async () => {

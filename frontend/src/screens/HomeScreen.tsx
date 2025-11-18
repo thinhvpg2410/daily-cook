@@ -291,6 +291,18 @@ export default function HomeScreen({ navigation }: any) {
     }
   }, [token]);
 
+  // Reload preferences when screen is focused (e.g., after updating in NutritionGoalsScreen)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (token) {
+        fetchUserPreferences();
+        fetchTodayStats(); // Also refresh stats to update progress bars
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation, token]);
+
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchAll();

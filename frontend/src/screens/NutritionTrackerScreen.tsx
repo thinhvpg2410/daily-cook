@@ -141,6 +141,16 @@ export default function NutritionTracker({ navigation }: any) {
     initialize();
   }, []);
 
+  // Reload preferences when screen is focused (e.g., after updating in NutritionGoalsScreen)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadUserPreferences();
+      loadStats(); // Also reload stats to update with new targets
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
   useEffect(() => {
     const timer = setTimeout(() => {
       loadRecipes(searchQuery);
