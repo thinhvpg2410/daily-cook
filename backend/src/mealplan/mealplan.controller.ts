@@ -37,6 +37,17 @@ export class MealPlanController {
     return this.s.getRange(u.userId, q);
   }
 
+  @Get("nutrition/daily")
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: "Lấy dinh dưỡng dựa trên thực đơn hằng ngày" })
+  @ApiQuery({ name: "date", required: false, description: "Ngày (YYYY-MM-DD). Mặc định hôm nay." })
+  getDailyNutrition(
+    @CurrentUser() u: any,
+    @Query("date") date?: string,
+  ) {
+    return this.s.getDailyNutrition(u.userId, date);
+  }
+
   @Put()
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: "Tạo hoặc cập nhật kế hoạch bữa ăn" })
@@ -53,7 +64,10 @@ export class MealPlanController {
   @ApiQuery({ name: "slot", description: "Loại bữa ăn (breakfast, lunch, dinner)", required: false })
   @ApiResponse({ status: 200, description: "Gợi ý bữa ăn" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
-  async getTodaySuggest(@CurrentUser() u: any, @Query("slot") slot?: string) {
+  async getTodaySuggest(
+    @CurrentUser() u: any,
+    @Query("slot") slot?: "breakfast" | "lunch" | "dinner" | "all",
+  ) {
     return this.s.getTodaySuggest(u.userId, slot);
   }
 

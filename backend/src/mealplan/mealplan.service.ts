@@ -1,7 +1,10 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
+  Logger,
   NotFoundException,
+  forwardRef,
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateMealPlanDto } from "./dto/create-mealplan.dto";
@@ -18,6 +21,7 @@ import {
 
 import { SuggestMenuDto } from "./dto/suggest-menu.dto";
 import { Prisma } from "@prisma/client";
+import { AIService } from "../ai/ai.service";
 
 type Slots = { breakfast?: string[]; lunch?: string[]; dinner?: string[] };
 
@@ -31,7 +35,13 @@ function shuffle<T>(arr: T[]) {
 
 @Injectable()
 export class MealPlanService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(MealPlanService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    @Inject(forwardRef(() => AIService))
+    private aiService: AIService,
+  ) {}
 
   async suggestMeal(
     userId: string,
@@ -101,6 +111,14 @@ export class MealPlanService {
   }
 
   private asDate(d: string) {
+    if (!d) throw new BadRequestException("Ngày không hợp lệ");
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      const [year, month, day] = d.split("-").map((v) => Number(v));
+      const dt = new Date(year, month - 1, day);
+      return startOfDay(dt);
+    }
+
     const dt = new Date(d);
     if (isNaN(+dt)) throw new BadRequestException("Ngày không hợp lệ");
     return startOfDay(dt);
@@ -134,6 +152,91 @@ export class MealPlanService {
       note: r.note,
       slots: r.slots as any as Slots,
     }));
+  }
+
+  async getDailyNutrition(userId: string, dateStr?: string) {
+    const normalizedDate = dateStr?.trim()
+      ? dateStr
+      : formatISO(new Date(), { representation: "date" });
+    const targetDate = this.asDate(normalizedDate);
+
+    const plan = await this.prisma.mealPlan.findUnique({
+      where: { userId_date: { userId, date: targetDate } },
+    });
+
+    if (!plan) {
+      return {
+        date: normalizedDate,
+        hasPlan: false,
+        meals: { breakfast: [], lunch: [], dinner: [] },
+        totals: { calories: 0, protein: 0, fat: 0, carbs: 0 },
+      };
+    }
+
+    const slots = this.normalizeSlots(plan.slots as any);
+    const recipeIds = [
+      ...(slots.breakfast ?? []),
+      ...(slots.lunch ?? []),
+      ...(slots.dinner ?? []),
+    ];
+
+    if (!recipeIds.length) {
+      return {
+        date: normalizedDate,
+        hasPlan: true,
+        meals: { breakfast: [], lunch: [], dinner: [] },
+        totals: { calories: 0, protein: 0, fat: 0, carbs: 0 },
+      };
+    }
+
+    const recipes = await this.prisma.recipe.findMany({
+      where: { id: { in: recipeIds } },
+      select: {
+        id: true,
+        title: true,
+        image: true,
+        totalKcal: true,
+        protein: true,
+        fat: true,
+        carbs: true,
+      },
+    });
+    const recipeMap = new Map(recipes.map((r) => [r.id, r]));
+
+    const mapMeals = (ids: string[]) =>
+      ids
+        .map((id) => recipeMap.get(id))
+        .filter(Boolean)
+        .map((r) => ({
+          id: r!.id,
+          title: r!.title,
+          image: r!.image,
+          kcal: r!.totalKcal ?? 0,
+          protein: r!.protein ?? 0,
+          fat: r!.fat ?? 0,
+          carbs: r!.carbs ?? 0,
+        }));
+
+    const breakfast = mapMeals(slots.breakfast ?? []);
+    const lunch = mapMeals(slots.lunch ?? []);
+    const dinner = mapMeals(slots.dinner ?? []);
+
+    const totals = [...breakfast, ...lunch, ...dinner].reduce(
+      (acc, meal) => ({
+        calories: acc.calories + (meal.kcal ?? 0),
+        protein: acc.protein + (meal.protein ?? 0),
+        fat: acc.fat + (meal.fat ?? 0),
+        carbs: acc.carbs + (meal.carbs ?? 0),
+      }),
+      { calories: 0, protein: 0, fat: 0, carbs: 0 },
+    );
+
+    return {
+      date: normalizedDate,
+      hasPlan: true,
+      meals: { breakfast, lunch, dinner },
+      totals,
+    };
   }
 
   async upsert(userId: string, dto: CreateMealPlanDto) {
@@ -277,6 +380,7 @@ export class MealPlanService {
       include: { items: { include: { ingredient: true } } },
     });
 
+    const ingredientIds = new Set<string>();
     const agg = new Map<
       string,
       { ingredientId: string; name: string; unit?: string; qty: number }
@@ -284,6 +388,7 @@ export class MealPlanService {
     for (const r of recs) {
       for (const it of r.items) {
         const key = it.ingredient.id;
+        ingredientIds.add(key);
         const unit = it.unitOverride || it.ingredient.unit || undefined;
         const prev = agg.get(key);
         if (prev) prev.qty += it.amount;
@@ -296,9 +401,15 @@ export class MealPlanService {
           });
       }
     }
-    return {
-      items: Array.from(agg.values()).map((v) => ({ ...v, checked: false })),
-    };
+    if (this.aiService?.isEnabled()) {
+      await this.ensureDailyIngredientPrices(Array.from(ingredientIds));
+    }
+
+    const items = await this.attachPriceInfo(
+      Array.from(agg.values()).map((v) => ({ ...v, checked: false })),
+    );
+
+    return { items };
   }
 
   private async pickCandidates(opts: {
@@ -307,6 +418,8 @@ export class MealPlanService {
     vegetarian?: boolean;
     region?: string;
     limit: number;
+    isDietMode?: boolean;
+    isEatClean?: boolean;
   }) {
     let where: any = { tags: { hasSome: opts.mustTags } };
     if (opts.vegetarian)
@@ -322,6 +435,22 @@ export class MealPlanService {
         },
       };
 
+    // Eat-clean mode: prefer healthy tags
+    if (opts.isEatClean) {
+      where = {
+        ...where,
+        tags: {
+          hasSome: [
+            ...(where.tags?.hasSome || opts.mustTags),
+            "Healthy",
+            "Steamed",
+            "Grilled",
+            "Veggie",
+          ],
+        },
+      };
+    }
+
     const rows = await this.prisma.recipe.findMany({
       where,
       select: {
@@ -330,14 +459,23 @@ export class MealPlanService {
         cookTime: true,
         likes: true,
         tags: true,
+        totalKcal: true,
       },
       orderBy: [{ likes: "desc" }, { createdAt: "desc" }],
       take: 80,
     });
 
-    const filtered = rows.filter(
+    let filtered = rows.filter(
       (r) => !opts.avoidNames.some((n) => r.title.toLowerCase().includes(n)),
     );
+
+    // Diet mode: prefer low-calorie recipes (sort by calories ascending)
+    if (opts.isDietMode) {
+      filtered = filtered
+        .sort((a, b) => (a.totalKcal || 9999) - (b.totalKcal || 9999))
+        .filter((r) => (r.totalKcal || 0) < 600); // Prefer recipes under 600 kcal
+    }
+
     return filtered.slice(0, opts.limit);
   }
 
@@ -361,25 +499,72 @@ export class MealPlanService {
     return recipes.reduce((s, r) => s + (r.cookTime ?? 30), 0);
   }
 
-  async suggestMenu(userId: string, dto: SuggestMenuDto) {
+  async suggestMenu(
+    userId: string,
+    dto: SuggestMenuDto,
+    recipeCount?: number | null,
+    isDietMode?: boolean,
+    isEatClean?: boolean,
+  ) {
     const date = this.asDate(dto.date);
     const avoid = (dto.excludeIngredientNames || "")
       .split(",")
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean);
 
-    const blocks: { key: string; tags: string[]; count: number }[] = [
-      { key: "main", tags: ["RiceSide", "Grilled", "Stew"], count: 1 },
-      { key: "soup", tags: ["Soup"], count: 1 },
-      { key: "veg", tags: ["Veggie", "StirFry"], count: 1 },
-    ];
-    if (dto.includeStarter)
+    // Get user preferences for nutrition goals
+    const userPrefs = await this.prisma.userPreference.findUnique({
+      where: { userId },
+    });
+    const dailyKcalTarget = userPrefs?.dailyKcalTarget || 2000;
+
+    // Determine base blocks based on recipe count
+    let baseBlocks: { key: string; tags: string[]; count: number }[] = [];
+    
+    if (recipeCount && recipeCount > 0) {
+      // Custom recipe count: adjust blocks accordingly
+      if (recipeCount <= 3) {
+        // Small count: main + soup or veg
+        baseBlocks = [
+          { key: "main", tags: ["RiceSide", "Grilled", "Stew"], count: 1 },
+          { key: "soup", tags: ["Soup"], count: recipeCount >= 2 ? 1 : 0 },
+          { key: "veg", tags: ["Veggie", "StirFry"], count: recipeCount >= 3 ? 1 : 0 },
+        ];
+      } else if (recipeCount <= 5) {
+        // Medium count: main + soup + veg
+        baseBlocks = [
+          { key: "main", tags: ["RiceSide", "Grilled", "Stew"], count: 1 },
+          { key: "soup", tags: ["Soup"], count: 1 },
+          { key: "veg", tags: ["Veggie", "StirFry"], count: recipeCount >= 4 ? 1 : 0 },
+        ];
+      } else {
+        // Large count: main + soup + veg + extras
+        baseBlocks = [
+          { key: "main", tags: ["RiceSide", "Grilled", "Stew"], count: Math.min(2, Math.ceil(recipeCount / 3)) },
+          { key: "soup", tags: ["Soup"], count: 1 },
+          { key: "veg", tags: ["Veggie", "StirFry"], count: Math.min(2, Math.ceil(recipeCount / 3)) },
+        ];
+      }
+    } else {
+      // Default: main + soup + veg
+      baseBlocks = [
+        { key: "main", tags: ["RiceSide", "Grilled", "Stew"], count: 1 },
+        { key: "soup", tags: ["Soup"], count: 1 },
+        { key: "veg", tags: ["Veggie", "StirFry"], count: 1 },
+      ];
+    }
+
+    // Filter out blocks with count 0
+    const blocks = baseBlocks.filter((b) => b.count > 0);
+
+    // Add optional blocks
+    if (dto.includeStarter && (!recipeCount || blocks.reduce((s, b) => s + b.count, 0) < recipeCount))
       (blocks as any).push({
         key: "starter",
         tags: ["Salad", "Pickle"],
         count: 1,
       });
-    if (dto.includeDessert)
+    if (dto.includeDessert && (!recipeCount || blocks.reduce((s, b) => s + b.count, 0) < recipeCount))
       (blocks as any).push({
         key: "dessert",
         tags: ["Dessert", "Drinks"],
@@ -394,6 +579,8 @@ export class MealPlanService {
         vegetarian: dto.vegetarian,
         region: dto.region,
         limit: 30,
+        isDietMode,
+        isEatClean,
       });
     }
 
@@ -421,7 +608,8 @@ export class MealPlanService {
       }
     }
 
-    const result = await this.prisma.recipe.findMany({
+    // Get recipes with calories
+    let result = await this.prisma.recipe.findMany({
       where: { id: { in: pickIds } },
       select: {
         id: true,
@@ -430,8 +618,145 @@ export class MealPlanService {
         cookTime: true,
         likes: true,
         tags: true,
+        totalKcal: true,
       },
     });
+
+    // Adjust to match recipe count if specified (before calorie filtering)
+    // Note: We'll adjust again after calorie filtering if needed
+
+    // Calculate total calories and filter if exceeds daily target
+    let totalKcal = result.reduce((sum, r) => sum + (r.totalKcal || 0), 0);
+    
+    // If total calories exceed daily target, try to replace with lower calorie options
+    if (totalKcal > dailyKcalTarget) {
+      // Sort recipes by calories (descending) to identify high-calorie ones
+      const sortedResults = [...result].sort((a, b) => (b.totalKcal || 0) - (a.totalKcal || 0));
+      
+      // Try to replace high-calorie recipes with lower-calorie alternatives
+      for (const highCalRecipe of sortedResults) {
+        if (totalKcal <= dailyKcalTarget * 0.95) break; // Stop if we're close to target (95%)
+        
+        // Find which block this recipe belongs to
+        let blockKey: string | null = null;
+        for (const b of blocks as any[]) {
+          if (highCalRecipe.tags.some((t: string) => b.tags.includes(t))) {
+            blockKey = b.key;
+            break;
+          }
+        }
+        
+        if (!blockKey) continue;
+        
+        // Try to find a lower-calorie alternative from the same pool
+        const alternatives = pools[blockKey]
+          .filter((alt) => alt.id !== highCalRecipe.id && (alt.totalKcal || 0) < (highCalRecipe.totalKcal || 0))
+          .sort((a, b) => (a.totalKcal || 0) - (b.totalKcal || 0));
+        
+        if (alternatives.length > 0) {
+          const replacement = alternatives[0];
+          const calorieDiff = (highCalRecipe.totalKcal || 0) - (replacement.totalKcal || 0);
+          
+          // Replace if it helps
+          if (calorieDiff > 0) {
+            const index = result.findIndex((r) => r.id === highCalRecipe.id);
+            if (index >= 0) {
+              result[index] = {
+                id: replacement.id,
+                title: replacement.title,
+                image: replacement.image,
+                cookTime: replacement.cookTime,
+                likes: replacement.likes,
+                tags: replacement.tags,
+                totalKcal: replacement.totalKcal,
+              };
+              totalKcal -= calorieDiff;
+            }
+          }
+        }
+      }
+      
+      // If still exceeds, remove highest calorie items (starting with dessert/starter if exists)
+      if (totalKcal > dailyKcalTarget) {
+        const toRemove: string[] = [];
+        let remainingKcal = totalKcal;
+        
+        // Priority: remove dessert/starter first, then highest calorie items
+        const sortedByCal = [...result].sort((a, b) => (b.totalKcal || 0) - (a.totalKcal || 0));
+        
+        for (const recipe of sortedByCal) {
+          if (remainingKcal <= dailyKcalTarget * 0.98) break; // Stop at 98% of target
+          
+          // Check if it's dessert/starter
+          const isDessertStarter = recipe.tags.some((t: string) => 
+            ["Dessert", "Drinks", "Salad", "Pickle"].includes(t)
+          );
+          
+          if (isDessertStarter || toRemove.length === 0) {
+            toRemove.push(recipe.id);
+            remainingKcal -= (recipe.totalKcal || 0);
+          }
+        }
+        
+        result = result.filter((r) => !toRemove.includes(r.id));
+        totalKcal = result.reduce((sum, r) => sum + (r.totalKcal || 0), 0);
+      }
+    }
+
+    // Final adjustment to match recipe count if specified (after calorie filtering)
+    if (recipeCount && recipeCount > 0) {
+      if (result.length > recipeCount) {
+        // Keep only the first N recipes (prioritize by block order)
+        result = result.slice(0, recipeCount);
+        totalKcal = result.reduce((sum, r) => sum + (r.totalKcal || 0), 0);
+      } else if (result.length < recipeCount) {
+        // Try to add more recipes if we have less than requested
+        const currentIds = new Set(result.map((r) => r.id));
+        const additional: any[] = [];
+        
+        for (const b of blocks as any[]) {
+          if (result.length + additional.length >= recipeCount) break;
+          const available = pools[b.key]
+            .filter((r: any) => !currentIds.has(r.id))
+            .slice(0, recipeCount - result.length - additional.length);
+          
+          if (available.length > 0) {
+            const fetched = await this.prisma.recipe.findMany({
+              where: { id: { in: available.map((r: any) => r.id) } },
+              select: {
+                id: true,
+                title: true,
+                image: true,
+                cookTime: true,
+                likes: true,
+                tags: true,
+                totalKcal: true,
+              },
+            });
+            
+            // Filter by diet/eat-clean mode if needed
+            let filtered = fetched;
+            if (isDietMode) {
+              filtered = fetched
+                .filter((r) => (r.totalKcal || 0) < 600)
+                .sort((a, b) => (a.totalKcal || 0) - (b.totalKcal || 0));
+            }
+            if (isEatClean) {
+              filtered = filtered.filter((r) =>
+                r.tags.some((t: string) => ["Healthy", "Steamed", "Grilled", "Veggie"].includes(t))
+              );
+            }
+            
+            additional.push(...filtered);
+          }
+        }
+        
+        if (additional.length > 0) {
+          result = [...result, ...additional].slice(0, recipeCount);
+          totalKcal = result.reduce((sum, r) => sum + (r.totalKcal || 0), 0);
+        }
+      }
+    }
 
     if (dto.persist ?? true) {
       // Get or create meal plan once
@@ -489,14 +814,23 @@ export class MealPlanService {
       }
     }
 
+    // Recalculate total calories after filtering
+    const finalTotalKcal = result.reduce((sum, r) => sum + (r.totalKcal || 0), 0);
+
     return {
       date: date.toISOString().slice(0, 10),
       slot: dto.slot,
       dishes: result,
+      totalKcal: finalTotalKcal,
+      dailyKcalTarget,
+      withinLimit: finalTotalKcal <= dailyKcalTarget,
     };
   }
 
-  async getTodaySuggest(userId: string, slot?: string) {
+  async getTodaySuggest(
+    userId: string,
+    slot?: "breakfast" | "lunch" | "dinner" | "all",
+  ) {
     const today = startOfDay(new Date());
     const todayStr = formatISO(today, { representation: "date" });
 
@@ -553,106 +887,82 @@ export class MealPlanService {
       }
     }
 
-    // Nếu chưa có plan, tạo gợi ý thông minh
+    // Nếu chưa có plan, sử dụng suggestMenu với calorie filtering
     const pref = await this.prisma.userPreference.findUnique({
       where: { userId },
-    });
-
-    // Lấy lịch sử meal plans gần đây để tránh lặp lại
-    const recentPlans = await this.prisma.mealPlan.findMany({
-      where: {
-        userId,
-        date: { gte: addDays(today, -7), lt: today },
-      },
-      take: 7,
-    });
-
-    const recentRecipeIds = new Set<string>();
-    recentPlans.forEach((p) => {
-      const s = this.normalizeSlots(p.slots as any);
-      (s.breakfast ?? []).forEach((id) => recentRecipeIds.add(id));
-      (s.lunch ?? []).forEach((id) => recentRecipeIds.add(id));
-      (s.dinner ?? []).forEach((id) => recentRecipeIds.add(id));
     });
 
     // Lấy user preferences
     const region = pref?.likedTags?.find((t) =>
       ["Northern", "Central", "Southern"].includes(t),
-    );
+    ) as "Northern" | "Central" | "Southern" | undefined;
     const dietType = pref?.dietType ?? "normal";
     const dislikedIngredients = pref?.dislikedIngredients ?? [];
 
-    // Tạo gợi ý cho từng bữa ăn
-    const suggestForSlot = async (
-      slotType: "breakfast" | "lunch" | "dinner",
-    ) => {
-      const tags =
-        slotType === "breakfast"
-          ? ["Breakfast", "Veggie", "Soup"]
-          : slotType === "lunch"
-            ? ["RiceSide", "Grilled", "Stew", "Soup"]
-            : ["RiceSide", "Grilled", "Stew", "Soup", "Veggie"];
+    // Xác định chế độ ăn
+    const isDietMode = dietType === "low_carb" || pref?.goal === "lose_weight";
+    const isEatClean = dietType === "eat_clean" || false;
 
-      let where: any = {
-        tags: { hasSome: tags },
-      };
+    // Sử dụng suggestMenu để đảm bảo calorie filtering đúng
+    const suggestions = await this.suggestMenu(
+      userId,
+      {
+        date: todayStr,
+        slot: slot ?? "all",
+        region,
+        vegetarian: dietType === "vegan" || dietType === "vegetarian",
+        excludeIngredientNames: dislikedIngredients.join(","),
+        persist: false, // Chỉ suggest, không lưu
+      },
+      null, // recipeCount: null để dùng default
+      isDietMode,
+      isEatClean,
+    );
 
-      // Chỉ thêm notIn nếu có recent recipes để tránh
-      if (recentRecipeIds.size > 0) {
-        where.id = { notIn: Array.from(recentRecipeIds) };
+    const allDishes = suggestions.dishes || [];
+    
+    // Phân bổ vào breakfast/lunch/dinner dựa trên slot
+    let breakfast: any[] = [];
+    let lunch: any[] = [];
+    let dinner: any[] = [];
+
+    if (slot === "breakfast") {
+      breakfast = allDishes.slice(0, 2); // Breakfast: 1-2 món
+    } else if (slot === "lunch") {
+      lunch = allDishes.slice(0, 3); // Lunch: 2-3 món
+    } else if (slot === "dinner") {
+      dinner = allDishes.slice(0, 3); // Dinner: 2-3 món
+    } else {
+      // slot === "all" hoặc không có: phân bổ thông minh
+      const lightRecipes = allDishes.filter((r) =>
+        r.tags.some((t: string) => ["Veggie", "Soup", "Salad", "Breakfast"].includes(t))
+      );
+      const otherRecipes = allDishes.filter((r) =>
+        !r.tags.some((t: string) => ["Veggie", "Soup", "Salad", "Breakfast"].includes(t))
+      );
+
+      // Breakfast: prefer light recipes (1-2 items)
+      breakfast = lightRecipes.length > 0
+        ? lightRecipes.slice(0, 2)
+        : allDishes.length > 0 ? [allDishes[0]] : [];
+
+      // Lunch: remaining light recipes + half of other recipes
+      const remainingLight = lightRecipes.slice(2);
+      const lunchCount = Math.max(2, Math.ceil(otherRecipes.length / 2));
+      lunch = [...remainingLight, ...otherRecipes.slice(0, lunchCount)];
+
+      // Dinner: remaining other recipes
+      const dinnerTemp = otherRecipes.slice(lunchCount);
+      dinner = dinnerTemp.length > 0 ? dinnerTemp : lunch.length > 2 ? lunch.slice(-2) : [];
+      
+      // Adjust lunch nếu đã lấy cho dinner
+      if (dinnerTemp.length === 0 && lunch.length > 2) {
+        lunch = lunch.slice(0, -2);
       }
+    }
 
-      if (region) where.region = region;
-      if (dietType === "vegan") where.tags = { hasSome: [...tags, "Vegan"] };
-      if (dietType === "low_carb") where.tags = { hasSome: [...tags, "LowCarb"] };
-
-      const candidates = await this.prisma.recipe.findMany({
-        where,
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          image: true,
-          cookTime: true,
-          likes: true,
-          tags: true,
-          totalKcal: true,
-          region: true,
-        },
-        orderBy: [{ likes: "desc" }, { createdAt: "desc" }],
-        take: 20,
-      });
-
-      // Lọc bỏ các món có ingredient không thích
-      const filtered = candidates.filter((r) => {
-        // Nếu có disliked ingredients, cần check trong recipe items
-        // Tạm thời chỉ filter bằng title/description
-        if (dislikedIngredients.length === 0) return true;
-        const titleDesc = `${r.title} ${r.description || ""}`.toLowerCase();
-        return !dislikedIngredients.some((ing) =>
-          titleDesc.includes(ing.toLowerCase()),
-        );
-      });
-
-      // Chọn ngẫu nhiên 1-2 món
-      const shuffled = shuffle([...filtered]);
-      return shuffled.slice(0, slotType === "breakfast" ? 1 : 2);
-    };
-
-    const breakfast = await suggestForSlot("breakfast");
-    const lunch = await suggestForSlot("lunch");
-    const dinner = await suggestForSlot("dinner");
-
-    const allRecipeIds = [
-      ...breakfast.map((r) => r.id),
-      ...lunch.map((r) => r.id),
-      ...dinner.map((r) => r.id),
-    ];
-
-    const totalKcal =
-      breakfast.reduce((s, r) => s + (r.totalKcal ?? 0), 0) +
-      lunch.reduce((s, r) => s + (r.totalKcal ?? 0), 0) +
-      dinner.reduce((s, r) => s + (r.totalKcal ?? 0), 0);
+    // Tính tổng calories (đã được filter bởi suggestMenu)
+    const totalKcal = suggestions.totalKcal || 0;
 
     // Log recommendation to AI log
     await this.prisma.aIRecommendationLog.create({
@@ -663,19 +973,20 @@ export class MealPlanService {
           slot: slot || "all",
           region,
           dietType,
-          hasRecentHistory: recentPlans.length > 0,
+          dailyKcalTarget: pref?.dailyKcalTarget || 2000,
         },
         output: {
           breakfast: breakfast.map((r) => r.id),
           lunch: lunch.map((r) => r.id),
           dinner: dinner.map((r) => r.id),
           totalKcal,
+          withinLimit: suggestions.withinLimit,
         },
         modelName: "DailyCook-v1",
       },
     });
 
-    // Nếu chỉ request một slot cụ thể
+    // Return kết quả
     if (slot === "breakfast") {
       return {
         date: todayStr,
@@ -683,7 +994,7 @@ export class MealPlanService {
         breakfast,
         lunch: [],
         dinner: [],
-        totalKcal: breakfast.reduce((s, r) => s + (r.totalKcal ?? 0), 0),
+        totalKcal: breakfast.reduce((s, r) => s + (r.totalKcal || 0), 0),
       };
     }
     if (slot === "lunch") {
@@ -693,7 +1004,7 @@ export class MealPlanService {
         breakfast: [],
         lunch,
         dinner: [],
-        totalKcal: lunch.reduce((s, r) => s + (r.totalKcal ?? 0), 0),
+        totalKcal: lunch.reduce((s, r) => s + (r.totalKcal || 0), 0),
       };
     }
     if (slot === "dinner") {
@@ -703,7 +1014,7 @@ export class MealPlanService {
         breakfast: [],
         lunch: [],
         dinner,
-        totalKcal: dinner.reduce((s, r) => s + (r.totalKcal ?? 0), 0),
+        totalKcal: dinner.reduce((s, r) => s + (r.totalKcal || 0), 0),
       };
     }
 
@@ -715,5 +1026,88 @@ export class MealPlanService {
       dinner,
       totalKcal,
     };
+  }
+
+  private async ensureDailyIngredientPrices(ingredientIds: string[]) {
+    if (!ingredientIds.length || !this.aiService?.isEnabled()) return;
+    const todayStart = startOfDay(new Date());
+
+    const pending = await this.prisma.ingredient.findMany({
+      where: {
+        id: { in: ingredientIds },
+        OR: [
+          { priceUpdatedAt: null },
+          { priceUpdatedAt: { lt: todayStart } },
+        ],
+      },
+      select: { id: true, name: true, unit: true },
+    });
+
+    if (!pending.length) return;
+
+    try {
+      const priceMap = await this.aiService.fetchIngredientMarketPrices(
+        pending.map((p) => ({ name: p.name, unit: p.unit || undefined })),
+      );
+
+      await Promise.all(
+        pending.map(async (ing) => {
+          const key = ing.name.trim().toLowerCase();
+          const info = priceMap[key];
+          if (!info?.pricePerUnit) return;
+
+          await this.prisma.ingredient.update({
+            where: { id: ing.id },
+            data: {
+              pricePerUnit: info.pricePerUnit,
+              priceCurrency: info.currency || "VND",
+              priceUpdatedAt: new Date(),
+            },
+          });
+        }),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Không thể cập nhật giá nguyên liệu: ${error?.message || error}`,
+      );
+    }
+  }
+
+  private async attachPriceInfo(
+    items: Array<{
+      ingredientId: string;
+      name: string;
+      unit?: string;
+      qty: number;
+      checked: boolean;
+    }>,
+  ) {
+    if (!items.length) return items;
+
+    const ingredients = await this.prisma.ingredient.findMany({
+      where: { id: { in: items.map((i) => i.ingredientId) } },
+      select: {
+        id: true,
+        pricePerUnit: true,
+        priceCurrency: true,
+        priceUpdatedAt: true,
+      },
+    });
+    const priceById = new Map(ingredients.map((ing) => [ing.id, ing] as const));
+
+    return items.map((item) => {
+      const price = priceById.get(item.ingredientId);
+      if (!price?.pricePerUnit) return item;
+      const estimatedCost = Number(
+        (price.pricePerUnit * item.qty).toFixed(2),
+      );
+      return {
+        ...item,
+        unitPrice: price.pricePerUnit,
+        currency: price.priceCurrency || "VND",
+        estimatedCost,
+        priceUpdatedAt: price.priceUpdatedAt,
+      };
+    });
   }
 }

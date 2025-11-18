@@ -32,6 +32,9 @@ export default function CalendarScreen({ navigation, route }: any) {
   const [recipeSearchQuery, setRecipeSearchQuery] = useState("");
   const [recipeSearchResults, setRecipeSearchResults] = useState<Recipe[]>([]);
   const [recipeSearchLoading, setRecipeSearchLoading] = useState(false);
+  const [recipeSearchPage, setRecipeSearchPage] = useState(1);
+  const [recipeSearchHasMore, setRecipeSearchHasMore] = useState(true);
+  const [recipeSearchTotal, setRecipeSearchTotal] = useState(0);
   const [replaceRecipeId, setReplaceRecipeId] = useState<string | null>(null);
   const [suggesting, setSuggesting] = useState(false);
 
@@ -374,21 +377,44 @@ export default function CalendarScreen({ navigation, route }: any) {
   };
   
   // Search recipes with debounce
-  const searchRecipes = async (query: string) => {
+  const searchRecipes = async (query: string, page: number = 1, append: boolean = false) => {
     if (!query.trim()) {
       setRecipeSearchResults([]);
+      setRecipeSearchPage(1);
+      setRecipeSearchHasMore(true);
       return;
     }
     
     setRecipeSearchLoading(true);
     try {
-      const res = await searchRecipesApi({ q: query, limit: 20 });
-      setRecipeSearchResults(res.data.data || []);
+      const limit = 20;
+      const res = await searchRecipesApi({ q: query, page, limit });
+      const newRecipes = res.data.data || [];
+      const total = res.data.total || 0;
+      
+      if (append) {
+        setRecipeSearchResults((prev) => [...prev, ...newRecipes]);
+      } else {
+        setRecipeSearchResults(newRecipes);
+      }
+      
+      setRecipeSearchTotal(total);
+      const currentLength = append ? recipeSearchResults.length + newRecipes.length : newRecipes.length;
+      setRecipeSearchHasMore(newRecipes.length === limit && currentLength < total);
     } catch (error) {
       console.error("Error searching recipes:", error);
     } finally {
       setRecipeSearchLoading(false);
     }
+  };
+
+  // Load more recipes
+  const loadMoreRecipes = async () => {
+    if (recipeSearchLoading || !recipeSearchHasMore || !recipeSearchQuery.trim()) return;
+    
+    const nextPage = recipeSearchPage + 1;
+    setRecipeSearchPage(nextPage);
+    await searchRecipes(recipeSearchQuery, nextPage, true);
   };
   
   // Debounce search - only search when user types
@@ -397,15 +423,19 @@ export default function CalendarScreen({ navigation, route }: any) {
     
     // If query is empty, load default recipes
     if (!recipeSearchQuery.trim()) {
+      setRecipeSearchPage(1);
+      setRecipeSearchHasMore(true);
       const timeoutId = setTimeout(() => {
         loadDefaultRecipes();
       }, 300);
       return () => clearTimeout(timeoutId);
     }
     
-    // Debounce search when user types
+    // Debounce search when user types - reset to page 1
+    setRecipeSearchPage(1);
+    setRecipeSearchHasMore(true);
     const timeoutId = setTimeout(() => {
-      searchRecipes(recipeSearchQuery);
+      searchRecipes(recipeSearchQuery, 1, false);
     }, 500);
     
     return () => clearTimeout(timeoutId);
@@ -417,23 +447,47 @@ export default function CalendarScreen({ navigation, route }: any) {
     setShowRecipeModal(true);
     setRecipeSearchQuery("");
     setRecipeSearchResults([]);
+    setRecipeSearchPage(1);
+    setRecipeSearchHasMore(true);
     setReplaceRecipeId(replaceId || null);
     
     // Load default recipes when modal opens
-    loadDefaultRecipes();
+    loadDefaultRecipes(1, false);
   };
   
   // Load default recipes (without query)
-  const loadDefaultRecipes = async () => {
+  const loadDefaultRecipes = async (page: number = 1, append: boolean = false) => {
     setRecipeSearchLoading(true);
     try {
-      const res = await searchRecipesApi({ limit: 20 });
-      setRecipeSearchResults(res.data.data || []);
+      const limit = 20;
+      const res = await searchRecipesApi({ page, limit });
+      const newRecipes = res.data.data || [];
+      const total = res.data.total || 0;
+      
+      if (append) {
+        setRecipeSearchResults((prev) => [...prev, ...newRecipes]);
+      } else {
+        setRecipeSearchResults(newRecipes);
+        setRecipeSearchPage(1);
+      }
+      
+      setRecipeSearchTotal(total);
+      const currentLength = append ? recipeSearchResults.length + newRecipes.length : newRecipes.length;
+      setRecipeSearchHasMore(newRecipes.length === limit && currentLength < total);
     } catch (error) {
       console.error("Error loading default recipes:", error);
     } finally {
       setRecipeSearchLoading(false);
     }
+  };
+
+  // Load more default recipes
+  const loadMoreDefaultRecipes = async () => {
+    if (recipeSearchLoading || !recipeSearchHasMore) return;
+    
+    const nextPage = recipeSearchPage + 1;
+    setRecipeSearchPage(nextPage);
+    await loadDefaultRecipes(nextPage, true);
   };
   
   // Suggest meals for selected date
@@ -493,6 +547,28 @@ export default function CalendarScreen({ navigation, route }: any) {
     
     return unsubscribe;
   }, [navigation, selectedDate, token]);
+
+  // Handle route params for refresh
+  useEffect(() => {
+    if (route?.params?.refresh && route?.params?.refreshDate) {
+      const refreshDate = route.params.refreshDate;
+      if (refreshDate !== selectedDate) {
+        setSelectedDate(refreshDate);
+      }
+      // Refresh meal plans
+      if (token) {
+        const date = new Date(refreshDate);
+        const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+        const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+        fetchMealPlans(
+          startOfMonth.toISOString().split("T")[0],
+          endOfMonth.toISOString().split("T")[0]
+        );
+      }
+      // Clear route params
+      navigation.setParams({ refresh: undefined, refreshDate: undefined });
+    }
+  }, [route?.params, token]);
 
   const meals = mealData[selectedDate] || { breakfast: [], lunch: [], dinner: [] };
   console.log(`Rendering meals for ${selectedDate}:`, {
@@ -773,6 +849,25 @@ export default function CalendarScreen({ navigation, route }: any) {
                   </View>
                 </TouchableOpacity>
               )}
+              onEndReached={() => {
+                if (recipeSearchQuery.trim()) {
+                  loadMoreRecipes();
+                } else {
+                  loadMoreDefaultRecipes();
+                }
+              }}
+              onEndReachedThreshold={0.5}
+              ListFooterComponent={() => {
+                if (!recipeSearchLoading || recipeSearchResults.length === 0) return null;
+                return (
+                  <View style={{ padding: 20, alignItems: "center" }}>
+                    <ActivityIndicator size="small" color="#f77" />
+                    <Text style={{ marginTop: 8, color: "#666", fontSize: 12 }}>
+                      Đang tải thêm...
+                    </Text>
+                  </View>
+                );
+              }}
             />
             </>
           )}

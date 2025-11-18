@@ -83,15 +83,30 @@ export default function MealSuggestScreen({ navigation }: any) {
   );
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [userPreferences, setUserPreferences] = useState<any>(null);
+  const [suggestionData, setSuggestionData] = useState<{
+    totalKcal: number;
+    dailyKcalTarget: number;
+    withinLimit: boolean;
+  } | null>(null);
+  const [accepting, setAccepting] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const flatListRef = useRef<FlatList>(null);
 
-  // Load user preferences on mount
+  // Load user preferences on mount and when screen is focused
   useEffect(() => {
     loadUserPreferences();
     // Auto-suggest based on current time
     autoSuggestBasedOnTime();
   }, []);
+
+  // Reload preferences when screen is focused (e.g., after updating in NutritionGoalsScreen)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadUserPreferences();
+    });
+
+    return unsubscribe;
+  }, [navigation]);
 
   // Load user preferences
   const loadUserPreferences = async () => {
@@ -165,12 +180,21 @@ export default function MealSuggestScreen({ navigation }: any) {
       });
 
       const suggestedRecipes = res.data?.dishes || [];
+      const totalKcal = res.data?.totalKcal || 0;
+      const dailyKcalTarget = res.data?.dailyKcalTarget || targetKcal;
+      const withinLimit = res.data?.withinLimit ?? true;
+
       setRecipes(suggestedRecipes);
+      setSuggestionData({
+        totalKcal,
+        dailyKcalTarget,
+        withinLimit,
+      });
 
       const suggestionMessage: Message = {
         id: Date.now().toString(),
         type: "assistant",
-        content: `Tôi đã tìm thấy ${suggestedRecipes.length} món ăn phù hợp! Bạn có thể xem và chọn món để thêm vào lịch. 🍽️`,
+        content: `Tôi đã tìm thấy ${suggestedRecipes.length} món ăn phù hợp (${Math.round(totalKcal)}/${Math.round(dailyKcalTarget)} kcal)! ${withinLimit ? "✅ Phù hợp với mục tiêu của bạn." : "⚠️ Vượt quá một chút so với mục tiêu."} Bạn có thể xem và chọn món để thêm vào lịch. 🍽️`,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, suggestionMessage]);
@@ -205,25 +229,61 @@ export default function MealSuggestScreen({ navigation }: any) {
 
     try {
       const suggestions = await suggestFromChat(text, selectedDate);
-      const suggestedRecipes = suggestions.dishes || [];
-
-      if (suggestedRecipes.length > 0) {
-        setRecipes(suggestedRecipes);
+      
+      // Handle clarification request
+      if (suggestions.needsClarification && suggestions.clarificationQuestion) {
         const aiMessage: Message = {
           id: Date.now().toString(),
           type: "assistant",
-          content: `Tôi đã tìm thấy ${suggestedRecipes.length} món ăn phù hợp:\n\n${suggestedRecipes
+          content: suggestions.clarificationQuestion,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, aiMessage]);
+        return;
+      }
+
+      const suggestedRecipes = suggestions.dishes || [];
+      const totalKcal = suggestions.totalKcal || 0;
+      const dailyKcalTarget = suggestions.dailyKcalTarget || targetKcal;
+      const withinLimit = suggestions.withinLimit ?? true;
+
+      if (suggestedRecipes.length > 0) {
+        setRecipes(suggestedRecipes);
+        setSuggestionData({
+          totalKcal,
+          dailyKcalTarget,
+          withinLimit,
+        });
+        const aiMessage: Message = {
+          id: Date.now().toString(),
+          type: "assistant",
+          content: `Tôi đã tìm thấy ${suggestedRecipes.length} món ăn phù hợp (${Math.round(totalKcal)}/${Math.round(dailyKcalTarget)} kcal):\n\n${suggestedRecipes
             .map(
               (r: Recipe, idx: number) =>
                 `${idx + 1}. ${r.title}${r.totalKcal ? ` (~${Math.round(r.totalKcal)} kcal)` : ""}`
             )
-            .join("\n")}\n\nBạn có thể xem chi tiết và chọn món để thêm vào lịch! 🍽️`,
+            .join("\n")}\n\n${withinLimit ? "✅ Phù hợp với mục tiêu của bạn." : "⚠️ Vượt quá một chút so với mục tiêu."}\n\nBạn có thể xem chi tiết và chọn món để thêm vào lịch! 🍽️`,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, aiMessage]);
+      } else {
+        const aiMessage: Message = {
+          id: Date.now().toString(),
+          type: "assistant",
+          content: "Xin lỗi, tôi không tìm thấy món ăn phù hợp với yêu cầu của bạn. Vui lòng thử lại với yêu cầu khác hoặc cung cấp thêm thông tin.",
           timestamp: new Date(),
         };
         setMessages((prev) => [...prev, aiMessage]);
       }
     } catch (error) {
       console.error("Error in quick suggestion:", error);
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        type: "assistant",
+        content: "Xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại hoặc cung cấp thêm thông tin về yêu cầu của bạn.",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setChatLoading(false);
     }
@@ -274,6 +334,139 @@ export default function MealSuggestScreen({ navigation }: any) {
     }
   };
 
+  const handleAcceptSuggestions = async () => {
+    if (recipes.length === 0) return;
+
+    // Check if within limit
+    if (suggestionData && !suggestionData.withinLimit) {
+      Alert.alert(
+        "Cảnh báo",
+        `Tổng calories (${Math.round(suggestionData.totalKcal)}) vượt quá mục tiêu hàng ngày (${Math.round(suggestionData.dailyKcalTarget)}). Bạn vẫn muốn thêm vào lịch?`,
+        [
+          { text: "Hủy", style: "cancel" },
+          {
+            text: "Thêm",
+            onPress: async () => {
+              await acceptSuggestions();
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    await acceptSuggestions();
+  };
+
+  const acceptSuggestions = async () => {
+    setAccepting(true);
+    try {
+      // Distribute recipes intelligently to breakfast/lunch/dinner based on tags
+      const lightRecipes = recipes.filter((r) =>
+        r.tags?.some((t) => ["Veggie", "Soup", "Salad", "Breakfast"].includes(t))
+      );
+      const otherRecipes = recipes.filter((r) =>
+        !r.tags?.some((t) => ["Veggie", "Soup", "Salad", "Breakfast"].includes(t))
+      );
+
+      // Breakfast: prefer light recipes (1-2 items)
+      const breakfastIds = lightRecipes.length > 0
+        ? lightRecipes.slice(0, 2).map((r) => r.id)
+        : recipes.length > 0 ? [recipes[0].id] : [];
+
+      // Lunch: remaining light recipes + half of other recipes
+      const remainingLight = lightRecipes.slice(2).map((r) => r.id);
+      const lunchCount = Math.max(2, Math.ceil(otherRecipes.length / 2));
+      const lunchOther = otherRecipes.slice(0, lunchCount).map((r) => r.id);
+      const lunchIds = [...remainingLight, ...lunchOther];
+
+      // Dinner: remaining other recipes
+      const dinnerIds = otherRecipes.slice(lunchCount).map((r) => r.id);
+
+      // If no recipes left for dinner, use some from lunch
+      let finalLunchIds = lunchIds;
+      let finalDinnerIds = dinnerIds;
+      if (dinnerIds.length === 0 && lunchIds.length > 2) {
+        finalLunchIds = lunchIds.slice(0, -2);
+        finalDinnerIds = lunchIds.slice(-2);
+      }
+
+      // Get or create meal plan
+      let mealPlanId: string;
+      try {
+        const plansRes = await getMealPlansApi({
+          start: selectedDate,
+          end: selectedDate,
+        });
+        const plans = plansRes.data || [];
+        const existingPlan = plans.find((p: any) => {
+          const planDate = typeof p.date === 'string' 
+            ? p.date.split('T')[0] 
+            : new Date(p.date).toISOString().split('T')[0];
+          return planDate === selectedDate;
+        });
+
+        if (existingPlan) {
+          mealPlanId = existingPlan.id;
+        } else {
+          const createRes = await upsertMealPlanApi({
+            date: selectedDate,
+            slots: { breakfast: [], lunch: [], dinner: [] },
+          });
+          mealPlanId = createRes.data.id;
+        }
+      } catch (error) {
+        const createRes = await upsertMealPlanApi({
+          date: selectedDate,
+          slots: { breakfast: [], lunch: [], dinner: [] },
+        });
+        mealPlanId = createRes.data.id;
+      }
+
+      // Update meal plan with distributed recipes
+      await upsertMealPlanApi({
+        date: selectedDate,
+        slots: {
+          breakfast: breakfastIds,
+          lunch: finalLunchIds,
+          dinner: finalDinnerIds,
+        },
+      });
+
+      Alert.alert(
+        "Thành công! ✅",
+        `Đã thêm ${recipes.length} món ăn vào lịch ngày ${selectedDate}!\n\n- Bữa sáng: ${breakfastIds.length} món\n- Bữa trưa: ${finalLunchIds.length} món\n- Bữa tối: ${finalDinnerIds.length} món`,
+        [
+          {
+            text: "Xem lịch",
+            onPress: () => {
+              // Clear suggestions before navigating
+              setRecipes([]);
+              setSuggestionData(null);
+              navigation.navigate("Calendar", { 
+                refreshDate: selectedDate,
+                refresh: true 
+              });
+            },
+          },
+          { 
+            text: "OK",
+            onPress: () => {
+              // Clear suggestions after accepting
+              setRecipes([]);
+              setSuggestionData(null);
+            }
+          },
+        ]
+      );
+    } catch (error: any) {
+      console.error("Error accepting suggestions:", error);
+      Alert.alert("Lỗi", error?.response?.data?.message || "Không thể thêm món vào lịch. Vui lòng thử lại!");
+    } finally {
+      setAccepting(false);
+    }
+  };
+
   const onSendMessage = async () => {
     if (!inputText.trim() || chatLoading) return;
 
@@ -307,19 +500,41 @@ export default function MealSuggestScreen({ navigation }: any) {
       if (isRecipeRequest) {
         try {
           const suggestions = await suggestFromChat(messageText, selectedDate);
-          const suggestedRecipes = suggestions.dishes || [];
-
-          if (suggestedRecipes.length > 0) {
-            setRecipes(suggestedRecipes);
+          
+          // Handle clarification request
+          if (suggestions.needsClarification && suggestions.clarificationQuestion) {
             const aiMessage: Message = {
               id: Date.now().toString(),
               type: "assistant",
-              content: `Tôi đã tìm thấy ${suggestedRecipes.length} món ăn phù hợp:\n\n${suggestedRecipes
+              content: suggestions.clarificationQuestion,
+              timestamp: new Date(),
+            };
+            setMessages((prev) => [...prev, aiMessage]);
+            setChatLoading(false);
+            return;
+          }
+
+          const suggestedRecipes = suggestions.dishes || [];
+          const totalKcal = suggestions.totalKcal || 0;
+          const dailyKcalTarget = suggestions.dailyKcalTarget || targetKcal;
+          const withinLimit = suggestions.withinLimit ?? true;
+
+          if (suggestedRecipes.length > 0) {
+            setRecipes(suggestedRecipes);
+            setSuggestionData({
+              totalKcal,
+              dailyKcalTarget,
+              withinLimit,
+            });
+            const aiMessage: Message = {
+              id: Date.now().toString(),
+              type: "assistant",
+              content: `Tôi đã tìm thấy ${suggestedRecipes.length} món ăn phù hợp (${Math.round(totalKcal)}/${Math.round(dailyKcalTarget)} kcal):\n\n${suggestedRecipes
                 .map(
                   (r: Recipe, idx: number) =>
                     `${idx + 1}. ${r.title}${r.totalKcal ? ` (~${Math.round(r.totalKcal)} kcal)` : ""}`
                 )
-                .join("\n")}\n\nBạn có thể xem chi tiết và chọn món để thêm vào lịch! 🍽️`,
+                .join("\n")}\n\n${withinLimit ? "✅ Phù hợp với mục tiêu của bạn." : "⚠️ Vượt quá một chút so với mục tiêu."}\n\nBạn có thể xem chi tiết và chọn món để thêm vào lịch! 🍽️`,
               timestamp: new Date(),
             };
             setMessages((prev) => [...prev, aiMessage]);
@@ -761,16 +976,51 @@ export default function MealSuggestScreen({ navigation }: any) {
         {recipes.length > 0 && (
           <View style={styles.recipesSection}>
             <View style={styles.recipesHeader}>
-              <Text style={styles.recipesTitle}>
-                {recipes.length} món được gợi ý
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.recipesTitle}>
+                  {recipes.length} món được gợi ý
+                </Text>
+                {suggestionData && (
+                  <View style={styles.caloriesInfo}>
+                    <Ionicons 
+                      name={suggestionData.withinLimit ? "checkmark-circle" : "warning"} 
+                      size={14} 
+                      color={suggestionData.withinLimit ? "#4CAF50" : "#FF9800"} 
+                    />
+                    <Text style={[
+                      styles.caloriesText,
+                      !suggestionData.withinLimit && styles.caloriesTextWarning
+                    ]}>
+                      {Math.round(suggestionData.totalKcal)} / {Math.round(suggestionData.dailyKcalTarget)} kcal
+                      {!suggestionData.withinLimit && " ⚠️"}
+                    </Text>
+                  </View>
+                )}
+              </View>
               <TouchableOpacity
-                onPress={() => setRecipes([])}
+                onPress={() => {
+                  setRecipes([]);
+                  setSuggestionData(null);
+                }}
                 style={styles.clearButton}
               >
                 <Ionicons name="close-circle" size={20} color="#999" />
               </TouchableOpacity>
             </View>
+            <TouchableOpacity
+              style={[styles.acceptButton, accepting && styles.acceptButtonDisabled]}
+              onPress={handleAcceptSuggestions}
+              disabled={accepting}
+            >
+              {accepting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                  <Text style={styles.acceptButtonText}>Chấp nhận tất cả</Text>
+                </>
+              )}
+            </TouchableOpacity>
             <FlatList
               data={recipes}
               keyExtractor={(item) => item.id}
@@ -1132,6 +1382,41 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
     color: "#f77",
+    marginBottom: 4,
+  },
+  caloriesInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 4,
+  },
+  caloriesText: {
+    fontSize: 13,
+    color: "#666",
+    fontWeight: "500",
+  },
+  caloriesTextWarning: {
+    color: "#FF9800",
+    fontWeight: "600",
+  },
+  acceptButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#4CAF50",
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    marginBottom: 16,
+    gap: 8,
+  },
+  acceptButtonDisabled: {
+    opacity: 0.6,
+  },
+  acceptButtonText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "600",
   },
   clearButton: {
     padding: 4,

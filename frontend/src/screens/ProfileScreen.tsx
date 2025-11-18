@@ -54,6 +54,18 @@ export default function ProfileScreen({ navigation }: any) {
     }
   }, [token]);
 
+  // Reload preferences when screen is focused (e.g., after updating in NutritionGoalsScreen)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (token) {
+        loadUserPreferences();
+        loadUserStats(); // Also reload stats in case they changed
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation, token]);
+
   const loadAllData = async () => {
     setLoading(true);
     try {

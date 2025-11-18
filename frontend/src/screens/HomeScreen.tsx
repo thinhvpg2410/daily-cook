@@ -291,6 +291,18 @@ export default function HomeScreen({ navigation }: any) {
     }
   }, [token]);
 
+  // Reload preferences when screen is focused (e.g., after updating in NutritionGoalsScreen)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (token) {
+        fetchUserPreferences();
+        fetchTodayStats(); // Also refresh stats to update progress bars
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation, token]);
+
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchAll();
@@ -659,11 +671,19 @@ export default function HomeScreen({ navigation }: any) {
                         </ScrollView>
                       </View>
                     )}
-                    {todaySuggest.totalKcal && (
+                    {todaySuggest.totalKcal && userPreferences && (
                       <View style={s.totalKcalContainer}>
-                        <Ionicons name="flame" size={16} color="#f77" />
-                        <Text style={s.totalKcalText}>
-                          Tổng: ~{Math.round(todaySuggest.totalKcal)} kcal
+                        <Ionicons 
+                          name={todaySuggest.totalKcal <= (userPreferences.dailyKcalTarget || 2000) ? "checkmark-circle" : "warning"} 
+                          size={16} 
+                          color={todaySuggest.totalKcal <= (userPreferences.dailyKcalTarget || 2000) ? "#4CAF50" : "#FF9800"} 
+                        />
+                        <Text style={[
+                          s.totalKcalText,
+                          todaySuggest.totalKcal > (userPreferences.dailyKcalTarget || 2000) && s.totalKcalTextWarning
+                        ]}>
+                          Tổng: ~{Math.round(todaySuggest.totalKcal)} / {userPreferences.dailyKcalTarget || 2000} kcal
+                          {todaySuggest.totalKcal > (userPreferences.dailyKcalTarget || 2000) && " ⚠️"}
                         </Text>
                       </View>
                     )}
@@ -1042,6 +1062,9 @@ const s = StyleSheet.create({
     color: "#f77",
     fontWeight: "600",
     marginLeft: 6,
+  },
+  totalKcalTextWarning: {
+    color: "#FF9800",
   },
   acceptButton: {
     backgroundColor: "#f77",

@@ -14,42 +14,47 @@ import TabBar from "./TabBar";
 import { useAuth } from "../context/AuthContext";
 import { getShoppingListApi } from "../api/mealplan";
 
-// 💰 Giá thực tế (ước tính đồng Việt Nam 2025) - có thể mở rộng từ database
-const INGREDIENT_PRICES: Record<string, number> = {
-  "Gạo": 8000,
-  "Thịt heo": 18000,
-  "Thịt bò": 35000,
-  "Thịt gà": 12000,
-  "Cá basa": 8000,
-  "Cá lóc": 10000,
-  "Tôm": 25000,
-  "Trứng gà": 4000,
-  "Rau muống": 4000,
-  "Cà chua": 5000,
-  "Cà rốt": 6000,
-  "Đường": 800,
-  "Nước mắm": 1000,
-  "Dầu ăn": 1500,
-  "Hành tím": 15000,
-  "Đậu phộng": 18000,
+type ShoppingItem = {
+  ingredientId: string;
+  name: string;
+  unit?: string;
+  qty: number;
+  checked: boolean;
+  unitPrice?: number;
+  estimatedCost?: number;
+  currency?: string;
+  priceUpdatedAt?: string;
 };
 
-function estimatePrice(name: string, amount: number, unit?: string): number {
-  const basePrice = INGREDIENT_PRICES[name] || 10000; // Default 10k/100g
-  if (unit === "g" || unit === "kg") {
-    const amountIn100g = unit === "kg" ? amount * 10 : amount / 100;
-    return basePrice * amountIn100g;
+type DisplayShoppingItem = ShoppingItem & {
+  displayQty: number;
+  displayCost: number;
+};
+
+const DEFAULT_UNIT_PRICE = 10000; // fallback 10k VND per base unit
+
+const computeEstimatedCost = (item: ShoppingItem, multiplier = 1) => {
+  if (typeof item.unitPrice === "number") {
+    return item.unitPrice * item.qty * multiplier;
   }
-  // For other units (tbsp, piece, etc.), use base price
-  return basePrice * amount;
-}
+  if (typeof item.estimatedCost === "number") {
+    return item.estimatedCost * multiplier;
+  }
+  // Fallback khi backend chưa trả về giá
+  return DEFAULT_UNIT_PRICE * item.qty * multiplier;
+};
+
+const formatCurrency = (value: number, currency?: string) => {
+  const symbol = !currency || currency === "VND" ? "₫" : ` ${currency}`;
+  return `${Math.round(value).toLocaleString()}${symbol}`;
+};
 
 export default function ShoppingListScreen() {
   const { token } = useAuth();
   const [loading, setLoading] = useState(false);
   const [servings, setServings] = useState<number>(2);
   const [mode, setMode] = useState<"normal" | "saving">("normal");
-  const [shoppingItems, setShoppingItems] = useState<any[]>([]);
+  const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>([]);
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
 
   const fetchShoppingList = async () => {
@@ -68,7 +73,7 @@ export default function ShoppingListScreen() {
         end: endOfWeek.toISOString().split("T")[0],
       });
 
-      const items = res.data?.items || [];
+      const items: ShoppingItem[] = res.data?.items || [];
       setShoppingItems(items);
     } catch (error) {
       console.error("Error fetching shopping list:", error);
@@ -96,21 +101,23 @@ export default function ShoppingListScreen() {
   };
 
   const savingFactor = mode === "saving" ? 0.85 : 1;
-  const adjustedItems = shoppingItems.map((item) => ({
+  const quantityMultiplier = servings * savingFactor;
+  const adjustedItems: DisplayShoppingItem[] = shoppingItems.map((item) => ({
     ...item,
-    qty: item.qty * servings * savingFactor,
+    displayQty: item.qty * quantityMultiplier,
+    displayCost: computeEstimatedCost(item, quantityMultiplier),
   }));
 
-  const totalCost = adjustedItems.reduce((sum, item) => {
-    const price = estimatePrice(item.name, item.qty, item.unit);
-    return sum + price;
-  }, 0);
+  const totalCost = adjustedItems.reduce(
+    (sum, item) => sum + (item.displayCost || 0),
+    0,
+  );
 
   const uncheckedItems = adjustedItems.filter((item) => !checkedItems.has(item.ingredientId));
-  const remainingCost = uncheckedItems.reduce((sum, item) => {
-    const price = estimatePrice(item.name, item.qty, item.unit);
-    return sum + price;
-  }, 0);
+  const remainingCost = uncheckedItems.reduce(
+    (sum, item) => sum + (item.displayCost || 0),
+    0,
+  );
 
   return (
     <SafeAreaView style={s.safe}>
@@ -173,31 +180,39 @@ export default function ShoppingListScreen() {
               </Text>
               {adjustedItems.map((item) => {
                 const isChecked = checkedItems.has(item.ingredientId);
-                const price = estimatePrice(item.name, item.qty, item.unit);
+                const updatedAtLabel = item.priceUpdatedAt
+                  ? new Date(item.priceUpdatedAt).toLocaleDateString("vi-VN")
+                  : null;
                 return (
-                  <TouchableOpacity
-                    key={item.ingredientId}
-                    style={[s.ingredientRow, isChecked && s.ingredientRowChecked]}
-                    onPress={() => toggleItem(item.ingredientId)}
-                  >
-                    <View style={{ flexDirection: "row", alignItems: "center", flex: 1.3 }}>
-                      <Ionicons
-                        name={isChecked ? "checkbox" : "square-outline"}
-                        size={20}
-                        color={isChecked ? "#f77" : "#ccc"}
-                        style={{ marginRight: 8 }}
-                      />
-                      <Text style={[s.ingredientName, isChecked && s.ingredientNameChecked]}>
-                        {item.name}
+                  <View key={item.ingredientId}>
+                    <TouchableOpacity
+                      style={[s.ingredientRow, isChecked && s.ingredientRowChecked]}
+                      onPress={() => toggleItem(item.ingredientId)}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "center", flex: 1.3 }}>
+                        <Ionicons
+                          name={isChecked ? "checkbox" : "square-outline"}
+                          size={20}
+                          color={isChecked ? "#f77" : "#ccc"}
+                          style={{ marginRight: 8 }}
+                        />
+                        <Text style={[s.ingredientName, isChecked && s.ingredientNameChecked]}>
+                          {item.name}
+                        </Text>
+                      </View>
+                      <Text style={[s.ingredientAmount, isChecked && s.ingredientNameChecked]}>
+                        {item.displayQty.toFixed(1)} {item.unit || "g"}
                       </Text>
-                    </View>
-                    <Text style={[s.ingredientAmount, isChecked && s.ingredientNameChecked]}>
-                      {item.qty.toFixed(1)} {item.unit || "g"}
-                    </Text>
-                    <Text style={[s.ingredientCost, isChecked && s.ingredientNameChecked]}>
-                      ~{Math.round(price).toLocaleString()}₫
-                    </Text>
-                  </TouchableOpacity>
+                      <Text style={[s.ingredientCost, isChecked && s.ingredientNameChecked]}>
+                        ~{formatCurrency(item.displayCost || 0, item.currency)}
+                      </Text>
+                    </TouchableOpacity>
+                    {updatedAtLabel && (
+                      <Text style={[s.priceMeta, isChecked && s.ingredientNameChecked]}>
+                        Giá AI cập nhật: {updatedAtLabel}
+                      </Text>
+                    )}
+                  </View>
                 );
               })}
 
@@ -208,11 +223,11 @@ export default function ShoppingListScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={s.nutrition}>
                     Tổng chi phí ước tính:{" "}
-                    <Text style={s.highlight}>~{Math.round(totalCost).toLocaleString()}₫</Text>
+                    <Text style={s.highlight}>~{formatCurrency(totalCost)}</Text>
                   </Text>
                   <Text style={s.nutrition}>
                     Còn lại cần mua:{" "}
-                    <Text style={s.highlight}>~{Math.round(remainingCost).toLocaleString()}₫</Text>
+                    <Text style={s.highlight}>~{formatCurrency(remainingCost)}</Text>
                   </Text>
                   <Text style={s.nutrition}>
                     Đã mua:{" "}
@@ -294,6 +309,13 @@ const s = StyleSheet.create({
   },
   ingredientAmount: { flex: 0.8, fontSize: 14, color: "#777", textAlign: "center" },
   ingredientCost: { flex: 1, fontSize: 14, color: "#f77", textAlign: "right", fontWeight: "600" },
+  priceMeta: {
+    fontSize: 12,
+    color: "#999",
+    textAlign: "right",
+    marginTop: -4,
+    marginBottom: 6,
+  },
   divider: { height: 1, backgroundColor: "#eee", marginVertical: 10 },
 
   summaryBox: {

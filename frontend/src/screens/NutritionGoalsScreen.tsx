@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -11,9 +11,12 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import TabBar from "./TabBar";
 import { getPreferencesApi, updatePreferencesApi, UserPreferences } from "../api/users";
 import { getFoodLogStatsApi } from "../api/food-log";
+import { calculateCalorieGoal, CalculateCalorieGoalResponse } from "../api/ai";
+import { useAuth } from "../context/AuthContext";
 
 // Tính toán BMR (Basal Metabolic Rate) - Mifflin-St Jeor Equation
 function calculateBMR(gender: string, age: number, height: number, weight: number): number {
@@ -69,8 +72,13 @@ function calculateMacroGoals(calories: number, goal: string) {
 }
 
 export default function NutritionGoalsScreen({ navigation }: any) {
+  const { user, token } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [aiCalculating, setAiCalculating] = useState(false);
+  
+  // Mode: 'ai' or 'custom'
+  const [mode, setMode] = useState<"ai" | "custom">("ai");
   
   // Personal info
   const [gender, setGender] = useState<"male" | "female" | "">("");
@@ -81,7 +89,7 @@ export default function NutritionGoalsScreen({ navigation }: any) {
   const [goal, setGoal] = useState<"lose_weight" | "maintain" | "gain_muscle" | "">("");
   
   // Nutrition goals
-  const [dailyKcalTarget, setDailyKcalTarget] = useState<string>("2000");
+  const [dailyKcalTarget, setDailyKcalTarget] = useState<string>("");
   const [proteinTarget, setProteinTarget] = useState<string>("");
   const [fatTarget, setFatTarget] = useState<string>("");
   const [carbsTarget, setCarbsTarget] = useState<string>("");
@@ -90,6 +98,7 @@ export default function NutritionGoalsScreen({ navigation }: any) {
   const [bmr, setBmr] = useState<number | null>(null);
   const [tdee, setTdee] = useState<number | null>(null);
   const [autoCalculated, setAutoCalculated] = useState(false);
+  const [aiExplanation, setAiExplanation] = useState<string>("");
   
   // Today's stats
   const [todayStats, setTodayStats] = useState<{
@@ -98,6 +107,15 @@ export default function NutritionGoalsScreen({ navigation }: any) {
     fat: number;
     carbs: number;
   } | null>(null);
+
+  // Refs for TextInputs to fix clearing issue
+  const ageInputRef = useRef<TextInput>(null);
+  const heightInputRef = useRef<TextInput>(null);
+  const weightInputRef = useRef<TextInput>(null);
+  const kcalInputRef = useRef<TextInput>(null);
+  const proteinInputRef = useRef<TextInput>(null);
+  const fatInputRef = useRef<TextInput>(null);
+  const carbsInputRef = useRef<TextInput>(null);
 
   const loadPreferences = async () => {
     try {
@@ -111,12 +129,43 @@ export default function NutritionGoalsScreen({ navigation }: any) {
         setWeight(prefs.weight?.toString() || "");
         setActivity(prefs.activity || "");
         setGoal(prefs.goal || "");
-        setDailyKcalTarget(prefs.dailyKcalTarget?.toString() || "2000");
+        setDailyKcalTarget(prefs.dailyKcalTarget?.toString() || "");
+        
+        // Recalculate macros from saved preferences
+        if (prefs.dailyKcalTarget && prefs.goal) {
+          const macros = calculateMacroGoals(prefs.dailyKcalTarget, prefs.goal);
+          setProteinTarget(macros.protein.toString());
+          setFatTarget(macros.fat.toString());
+          setCarbsTarget(macros.carbs.toString());
+          // Set mode based on whether we have full personal info
+          if (prefs.gender && prefs.age && prefs.height && prefs.weight && prefs.activity && prefs.goal) {
+            setMode("ai"); // Default to AI mode if we have full info
+          } else {
+            setMode("custom");
+          }
+        } else {
+          // Set empty if no data
+          setProteinTarget("");
+          setFatTarget("");
+          setCarbsTarget("");
+          setMode("custom");
+        }
+      } else {
+        // Set empty defaults if no preferences
+        setDailyKcalTarget("");
+        setProteinTarget("");
+        setFatTarget("");
+        setCarbsTarget("");
       }
     } catch (error: any) {
       if (error.response?.status !== 404) {
         console.error("Error loading preferences:", error);
       }
+      // Set empty on error
+      setDailyKcalTarget("");
+      setProteinTarget("");
+      setFatTarget("");
+      setCarbsTarget("");
     } finally {
       setLoading(false);
     }
@@ -144,47 +193,142 @@ export default function NutritionGoalsScreen({ navigation }: any) {
     }
   };
 
-  useEffect(() => {
-    loadPreferences();
-    loadTodayStats();
-  }, []);
+  // Load data on mount and when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      loadPreferences();
+      loadTodayStats();
+    }, [])
+  );
 
-  // Auto calculate when personal info changes
+  // Calculate with AI when in AI mode and all info is available
+  const calculateWithAI = async () => {
+    if (!gender || !age || !height || !weight || !activity || !goal || !token) {
+      Alert.alert("Thiếu thông tin", "Vui lòng điền đầy đủ thông tin cá nhân trước khi sử dụng AI.");
+      return;
+    }
+
+    const ageNum = parseInt(age);
+    const heightNum = parseInt(height);
+    const weightNum = parseFloat(weight);
+
+    if (ageNum <= 0 || heightNum <= 0 || weightNum <= 0) {
+      Alert.alert("Dữ liệu không hợp lệ", "Vui lòng kiểm tra lại thông tin cá nhân.");
+      return;
+    }
+
+    setAiCalculating(true);
+    try {
+      const result: CalculateCalorieGoalResponse = await calculateCalorieGoal({
+        gender,
+        age: ageNum,
+        height: heightNum,
+        weight: weightNum,
+        activity,
+        goal,
+      });
+
+      // Apply AI results
+      setBmr(result.bmr);
+      setTdee(result.tdee);
+      setDailyKcalTarget(result.dailyKcalTarget.toString());
+      setProteinTarget(result.protein.toString());
+      setFatTarget(result.fat.toString());
+      setCarbsTarget(result.carbs.toString());
+      setAiExplanation(result.explanation);
+      setAutoCalculated(true);
+      setMode("ai"); // Ensure we're in AI mode
+    } catch (error: any) {
+      console.error("AI calculation error:", error);
+      // Fallback to manual calculation
+      const calculatedBMR = calculateBMR(gender, ageNum, heightNum, weightNum);
+      const calculatedTDEE = calculateTDEE(calculatedBMR, activity);
+      const targetCalories = calculateTargetCalories(calculatedTDEE, goal);
+      const macros = calculateMacroGoals(targetCalories, goal);
+
+      setBmr(Math.round(calculatedBMR));
+      setTdee(calculatedTDEE);
+      setDailyKcalTarget(targetCalories.toString());
+      setProteinTarget(macros.protein.toString());
+      setFatTarget(macros.fat.toString());
+      setCarbsTarget(macros.carbs.toString());
+      setAiExplanation("Đã tính toán tự động (AI không khả dụng).");
+      setAutoCalculated(true);
+
+      Alert.alert(
+        "AI không khả dụng",
+        "Đã sử dụng tính toán thủ công. Vui lòng kiểm tra kết nối hoặc thử lại sau."
+      );
+    } finally {
+      setAiCalculating(false);
+    }
+  };
+
+  // Auto calculate with AI when personal info changes (only in AI mode)
   useEffect(() => {
-    if (gender && age && height && weight && activity && goal) {
+    // Only auto-calculate if we're not loading initial data
+    if (loading) return;
+
+    if (mode === "ai" && gender && age && height && weight && activity && goal && token) {
       const ageNum = parseInt(age);
       const heightNum = parseInt(height);
       const weightNum = parseFloat(weight);
-      
+
+      if (ageNum > 0 && heightNum > 0 && weightNum > 0) {
+        // Auto-calculate with AI when all fields are filled (debounced)
+        const timer = setTimeout(() => {
+          calculateWithAI();
+        }, 1500); // Debounce 1.5 seconds to avoid too many calls
+
+        return () => clearTimeout(timer);
+      }
+    } else if (mode === "custom" && gender && age && height && weight && activity && goal) {
+      // Manual calculation in custom mode
+      const ageNum = parseInt(age);
+      const heightNum = parseInt(height);
+      const weightNum = parseFloat(weight);
+
       if (ageNum > 0 && heightNum > 0 && weightNum > 0) {
         const calculatedBMR = calculateBMR(gender, ageNum, heightNum, weightNum);
         const calculatedTDEE = calculateTDEE(calculatedBMR, activity);
         const targetCalories = calculateTargetCalories(calculatedTDEE, goal);
         const macros = calculateMacroGoals(targetCalories, goal);
-        
+
         setBmr(Math.round(calculatedBMR));
         setTdee(calculatedTDEE);
-        setDailyKcalTarget(targetCalories.toString());
-        setProteinTarget(macros.protein.toString());
-        setFatTarget(macros.fat.toString());
-        setCarbsTarget(macros.carbs.toString());
+        // In custom mode, auto-fill if empty
+        if (!dailyKcalTarget || dailyKcalTarget.trim() === "") {
+          setDailyKcalTarget(targetCalories.toString());
+        }
+        if (!proteinTarget || proteinTarget.trim() === "" || 
+            !fatTarget || fatTarget.trim() === "" || 
+            !carbsTarget || carbsTarget.trim() === "") {
+          setProteinTarget(macros.protein.toString());
+          setFatTarget(macros.fat.toString());
+          setCarbsTarget(macros.carbs.toString());
+        }
         setAutoCalculated(true);
       }
     }
-  }, [gender, age, height, weight, activity, goal]);
+  }, [gender, age, height, weight, activity, goal, mode]);
 
-  // Recalculate macros when calories change
+  // Recalculate macros when calories change (only in custom mode)
   useEffect(() => {
-    if (goal && dailyKcalTarget) {
+    if (mode === "custom" && goal && dailyKcalTarget && dailyKcalTarget.trim() !== "") {
       const calories = parseInt(dailyKcalTarget);
       if (calories > 0) {
         const macros = calculateMacroGoals(calories, goal);
-        setProteinTarget(macros.protein.toString());
-        setFatTarget(macros.fat.toString());
-        setCarbsTarget(macros.carbs.toString());
+        // Only auto-fill if all macro fields are empty
+        if ((!proteinTarget || proteinTarget.trim() === "") && 
+            (!fatTarget || fatTarget.trim() === "") && 
+            (!carbsTarget || carbsTarget.trim() === "")) {
+          setProteinTarget(macros.protein.toString());
+          setFatTarget(macros.fat.toString());
+          setCarbsTarget(macros.carbs.toString());
+        }
       }
     }
-  }, [dailyKcalTarget, goal]);
+  }, [dailyKcalTarget, goal, mode]);
 
   const handleSave = async () => {
     // Validation
@@ -193,8 +337,23 @@ export default function NutritionGoalsScreen({ navigation }: any) {
       return;
     }
 
-    if (!dailyKcalTarget || parseInt(dailyKcalTarget) < 500) {
+    if (!dailyKcalTarget || dailyKcalTarget.trim() === "" || parseInt(dailyKcalTarget) < 500) {
       Alert.alert("Lỗi", "Mục tiêu calories phải lớn hơn 500");
+      return;
+    }
+
+    if (!proteinTarget || proteinTarget.trim() === "" || parseInt(proteinTarget) <= 0) {
+      Alert.alert("Lỗi", "Vui lòng nhập mục tiêu protein hợp lệ");
+      return;
+    }
+
+    if (!fatTarget || fatTarget.trim() === "" || parseInt(fatTarget) <= 0) {
+      Alert.alert("Lỗi", "Vui lòng nhập mục tiêu fat hợp lệ");
+      return;
+    }
+
+    if (!carbsTarget || carbsTarget.trim() === "" || parseInt(carbsTarget) <= 0) {
+      Alert.alert("Lỗi", "Vui lòng nhập mục tiêu carbs hợp lệ");
       return;
     }
 
@@ -208,11 +367,27 @@ export default function NutritionGoalsScreen({ navigation }: any) {
         activity,
         goal,
         dailyKcalTarget: parseInt(dailyKcalTarget),
+        // Note: Backend không có fields riêng cho protein/fat/carbs targets
+        // Chúng sẽ được tính toán lại từ dailyKcalTarget và goal
       };
 
-      await updatePreferencesApi(preferences);
-      Alert.alert("Thành công", "Mục tiêu dinh dưỡng đã được lưu!", [
-        { text: "OK", onPress: () => navigation.goBack() }
+      // Save to backend
+      const savedPreferences = await updatePreferencesApi(preferences);
+      
+      // Reload preferences để đảm bảo sync với backend
+      await loadPreferences();
+      
+      // Reload today stats để cập nhật progress bars
+      await loadTodayStats();
+
+      Alert.alert("Thành công", "Mục tiêu dinh dưỡng đã được lưu và đồng bộ!", [
+        { 
+          text: "OK", 
+          onPress: () => {
+            // Navigate back and notify parent screens to refresh
+            navigation.goBack();
+          }
+        }
       ]);
     } catch (error: any) {
       const errorMessage = error?.response?.data?.message || error?.message || "Đã xảy ra lỗi. Vui lòng thử lại.";
@@ -278,35 +453,114 @@ export default function NutritionGoalsScreen({ navigation }: any) {
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Tuổi</Text>
-            <TextInput
-              style={styles.input}
-              value={age}
-              onChangeText={setAge}
-              keyboardType="numeric"
-              placeholder="Nhập tuổi"
-            />
+            <View style={styles.inputWithClear}>
+              <TextInput
+                ref={ageInputRef}
+                style={[styles.input, styles.inputFullWidth]}
+                value={age}
+                onChangeText={(text) => {
+                  if (text === "" || text.trim() === "") {
+                    setAge("");
+                    setAutoCalculated(false);
+                    return;
+                  }
+                  const numericValue = text.replace(/[^0-9]/g, "");
+                  setAge(numericValue);
+                }}
+                keyboardType="numeric"
+                placeholder="Nhập tuổi"
+                placeholderTextColor="#999"
+                selectTextOnFocus
+              />
+              {age && (
+                <TouchableOpacity
+                  style={styles.clearButtonInline}
+                  onPress={() => {
+                    setAge("");
+                    ageInputRef.current?.focus();
+                  }}
+                >
+                  <Ionicons name="close-circle" size={20} color="#999" />
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
 
           <View style={styles.row}>
             <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
               <Text style={styles.label}>Chiều cao (cm)</Text>
-              <TextInput
-                style={styles.input}
-                value={height}
-                onChangeText={setHeight}
-                keyboardType="numeric"
-                placeholder="170"
-              />
+              <View style={styles.inputWithClear}>
+                <TextInput
+                  ref={heightInputRef}
+                  style={[styles.input, styles.inputFullWidth]}
+                  value={height}
+                  onChangeText={(text) => {
+                    if (text === "" || text.trim() === "") {
+                      setHeight("");
+                      setAutoCalculated(false);
+                      return;
+                    }
+                    const numericValue = text.replace(/[^0-9]/g, "");
+                    setHeight(numericValue);
+                  }}
+                  keyboardType="numeric"
+                  placeholder="170"
+                  placeholderTextColor="#999"
+                  selectTextOnFocus
+                />
+                {height && (
+                  <TouchableOpacity
+                    style={styles.clearButtonInline}
+                    onPress={() => {
+                      setHeight("");
+                      heightInputRef.current?.focus();
+                    }}
+                  >
+                    <Ionicons name="close-circle" size={20} color="#999" />
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
             <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
               <Text style={styles.label}>Cân nặng (kg)</Text>
-              <TextInput
-                style={styles.input}
-                value={weight}
-                onChangeText={setWeight}
-                keyboardType="numeric"
-                placeholder="70"
-              />
+              <View style={styles.inputWithClear}>
+                <TextInput
+                  ref={weightInputRef}
+                  style={[styles.input, styles.inputFullWidth]}
+                  value={weight}
+                  onChangeText={(text) => {
+                    if (text === "" || text.trim() === "") {
+                      setWeight("");
+                      setAutoCalculated(false);
+                      return;
+                    }
+                    // Allow decimal point
+                    const numericValue = text.replace(/[^0-9.]/g, "");
+                    // Only allow one decimal point
+                    const parts = numericValue.split(".");
+                    if (parts.length > 2) {
+                      setWeight(parts[0] + "." + parts.slice(1).join(""));
+                    } else {
+                      setWeight(numericValue);
+                    }
+                  }}
+                  keyboardType="decimal-pad"
+                  placeholder="70"
+                  placeholderTextColor="#999"
+                  selectTextOnFocus
+                />
+                {weight && (
+                  <TouchableOpacity
+                    style={styles.clearButtonInline}
+                    onPress={() => {
+                      setWeight("");
+                      weightInputRef.current?.focus();
+                    }}
+                  >
+                    <Ionicons name="close-circle" size={20} color="#999" />
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
           </View>
 
@@ -361,57 +615,223 @@ export default function NutritionGoalsScreen({ navigation }: any) {
 
         {/* Nutrition Goals Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Mục tiêu dinh dưỡng hàng ngày</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Mục tiêu dinh dưỡng hàng ngày</Text>
+            <View style={styles.modeToggle}>
+              <TouchableOpacity
+                style={[styles.modeButton, mode === "ai" && styles.modeButtonActive]}
+                onPress={() => {
+                  setMode("ai");
+                  if (gender && age && height && weight && activity && goal) {
+                    calculateWithAI();
+                  }
+                }}
+                disabled={aiCalculating}
+              >
+                <Ionicons 
+                  name="sparkles" 
+                  size={16} 
+                  color={mode === "ai" ? "#fff" : "#f77"} 
+                />
+                <Text style={[styles.modeButtonText, mode === "ai" && styles.modeButtonTextActive]}>
+                  AI
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modeButton, mode === "custom" && styles.modeButtonActive]}
+                onPress={() => setMode("custom")}
+              >
+                <Ionicons 
+                  name="create-outline" 
+                  size={16} 
+                  color={mode === "custom" ? "#fff" : "#f77"} 
+                />
+                <Text style={[styles.modeButtonText, mode === "custom" && styles.modeButtonTextActive]}>
+                  Tùy chỉnh
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {mode === "ai" && (
+            <TouchableOpacity
+              style={styles.aiCalculateButton}
+              onPress={calculateWithAI}
+              disabled={aiCalculating || !gender || !age || !height || !weight || !activity || !goal}
+            >
+              {aiCalculating ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="sparkles" size={20} color="#fff" />
+                  <Text style={styles.aiCalculateButtonText}>Tính toán với AI</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+
           {autoCalculated && (
             <View style={styles.autoCalculatedBadge}>
               <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
-              <Text style={styles.autoCalculatedText}>Đã tính toán tự động</Text>
+              <Text style={styles.autoCalculatedText}>
+                {mode === "ai" ? "Đã tính toán với AI" : "Đã tính toán tự động"}
+              </Text>
+            </View>
+          )}
+
+          {mode === "ai" && aiExplanation && (
+            <View style={styles.aiExplanationBox}>
+              <Ionicons name="information-circle" size={16} color="#f77" />
+              <Text style={styles.aiExplanationText}>{aiExplanation}</Text>
             </View>
           )}
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Calories (kcal)</Text>
-            <TextInput
-              style={styles.input}
+            <View style={styles.inputWithClear}>
+              <TextInput
+                ref={kcalInputRef}
+                style={[styles.input, styles.inputFullWidth]}
               value={dailyKcalTarget}
-              onChangeText={setDailyKcalTarget}
-              keyboardType="numeric"
-              placeholder="2000"
-            />
+              onChangeText={(text) => {
+                // Allow clearing
+                if (text === "" || text.trim() === "") {
+                  setDailyKcalTarget("");
+                  setAutoCalculated(false);
+                  return;
+                }
+                // Only allow numbers
+                const numericValue = text.replace(/[^0-9]/g, "");
+                if (numericValue !== text) {
+                  // If we removed characters, user might be editing
+                  setAutoCalculated(false);
+                }
+                setDailyKcalTarget(numericValue);
+              }}
+                keyboardType="numeric"
+                placeholder="2000"
+                placeholderTextColor="#999"
+                editable={mode === "custom"}
+                selectTextOnFocus={mode === "custom"}
+              />
+              {mode === "custom" && dailyKcalTarget && (
+                <TouchableOpacity
+                  style={styles.clearButtonInline}
+                  onPress={() => {
+                    setDailyKcalTarget("");
+                    kcalInputRef.current?.focus();
+                  }}
+                >
+                  <Ionicons name="close-circle" size={20} color="#999" />
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
 
           <View style={styles.row}>
             <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
               <Text style={styles.label}>Protein (g)</Text>
-              <TextInput
-                style={styles.input}
-                value={proteinTarget}
-                onChangeText={setProteinTarget}
-                keyboardType="numeric"
-                placeholder="150"
-              />
+              <View style={styles.inputWithClear}>
+                <TextInput
+                  ref={proteinInputRef}
+                  style={[styles.input, styles.inputFullWidth]}
+                  value={proteinTarget}
+                  onChangeText={(text) => {
+                    if (text === "") {
+                      setProteinTarget("");
+                      return;
+                    }
+                    const numericValue = text.replace(/[^0-9]/g, "");
+                    setProteinTarget(numericValue);
+                  }}
+                  keyboardType="numeric"
+                  placeholder="150"
+                  placeholderTextColor="#999"
+                  editable={mode === "custom"}
+                  selectTextOnFocus={mode === "custom"}
+                />
+                {mode === "custom" && proteinTarget && (
+                  <TouchableOpacity
+                    style={styles.clearButtonInline}
+                    onPress={() => {
+                      setProteinTarget("");
+                      proteinInputRef.current?.focus();
+                    }}
+                  >
+                    <Ionicons name="close-circle" size={20} color="#999" />
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
             <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
               <Text style={styles.label}>Fat (g)</Text>
-              <TextInput
-                style={styles.input}
-                value={fatTarget}
-                onChangeText={setFatTarget}
-                keyboardType="numeric"
-                placeholder="55"
-              />
+              <View style={styles.inputWithClear}>
+                <TextInput
+                  ref={fatInputRef}
+                  style={[styles.input, styles.inputFullWidth]}
+                  value={fatTarget}
+                  onChangeText={(text) => {
+                    if (text === "") {
+                      setFatTarget("");
+                      return;
+                    }
+                    const numericValue = text.replace(/[^0-9]/g, "");
+                    setFatTarget(numericValue);
+                  }}
+                  keyboardType="numeric"
+                  placeholder="55"
+                  placeholderTextColor="#999"
+                  editable={mode === "custom"}
+                  selectTextOnFocus={mode === "custom"}
+                />
+                {mode === "custom" && fatTarget && (
+                  <TouchableOpacity
+                    style={styles.clearButtonInline}
+                    onPress={() => {
+                      setFatTarget("");
+                      fatInputRef.current?.focus();
+                    }}
+                  >
+                    <Ionicons name="close-circle" size={20} color="#999" />
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
           </View>
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Carbs (g)</Text>
-            <TextInput
-              style={styles.input}
-              value={carbsTarget}
-              onChangeText={setCarbsTarget}
-              keyboardType="numeric"
-              placeholder="225"
-            />
+            <View style={styles.inputWithClear}>
+              <TextInput
+                ref={carbsInputRef}
+                style={[styles.input, styles.inputFullWidth]}
+                value={carbsTarget}
+                onChangeText={(text) => {
+                  if (text === "") {
+                    setCarbsTarget("");
+                    return;
+                  }
+                  const numericValue = text.replace(/[^0-9]/g, "");
+                  setCarbsTarget(numericValue);
+                }}
+                keyboardType="numeric"
+                placeholder="225"
+                placeholderTextColor="#999"
+                editable={mode === "custom"}
+                selectTextOnFocus={mode === "custom"}
+              />
+              {mode === "custom" && carbsTarget && (
+                <TouchableOpacity
+                  style={styles.clearButtonInline}
+                  onPress={() => {
+                    setCarbsTarget("");
+                    carbsInputRef.current?.focus();
+                  }}
+                >
+                  <Ionicons name="close-circle" size={20} color="#999" />
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
         </View>
 
@@ -496,11 +916,74 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
   },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "600",
     color: "#333",
+    flex: 1,
+  },
+  modeToggle: {
+    flexDirection: "row",
+    gap: 8,
+    backgroundColor: "#f5f5f5",
+    borderRadius: 20,
+    padding: 4,
+  },
+  modeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4,
+  },
+  modeButtonActive: {
+    backgroundColor: "#f77",
+  },
+  modeButtonText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#f77",
+  },
+  modeButtonTextActive: {
+    color: "#fff",
+  },
+  aiCalculateButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f77",
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
     marginBottom: 16,
+    gap: 8,
+  },
+  aiCalculateButtonText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  aiExplanationBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#fff9e6",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    gap: 8,
+  },
+  aiExplanationText: {
+    flex: 1,
+    fontSize: 13,
+    color: "#666",
+    lineHeight: 18,
   },
   row: {
     flexDirection: "row",
@@ -522,6 +1005,23 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 15,
     backgroundColor: "#fff",
+  },
+  inputWithClear: {
+    position: "relative",
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  inputFullWidth: {
+    flex: 1,
+  },
+  clearButton: {
+    position: "absolute",
+    right: 8,
+    padding: 4,
+  },
+  clearButtonInline: {
+    marginLeft: 8,
+    padding: 4,
   },
   genderContainer: {
     flexDirection: "row",

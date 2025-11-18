@@ -12,6 +12,7 @@ export interface ChatResponse {
 
 export interface SuggestFromChatResponse {
   date: string;
+  slot?: "breakfast" | "lunch" | "dinner" | "all";
   dishes: Array<{
     id: string;
     title: string;
@@ -19,8 +20,13 @@ export interface SuggestFromChatResponse {
     cookTime?: number | null;
     likes?: number | null;
     tags?: string[];
+    totalKcal?: number | null;
   }>;
   totalKcal?: number;
+  dailyKcalTarget?: number;
+  withinLimit?: boolean;
+  needsClarification?: boolean;
+  clarificationQuestion?: string;
 }
 
 /**
@@ -48,6 +54,35 @@ export const suggestFromChat = async (
     request,
     date,
   });
+  return res.data;
+};
+
+/**
+ * Tính toán năng lượng và macros phù hợp dựa trên thông tin cá nhân
+ */
+export interface CalculateCalorieGoalParams {
+  gender: "male" | "female";
+  age: number;
+  height: number; // cm
+  weight: number; // kg
+  activity: "low" | "medium" | "high";
+  goal: "lose_weight" | "maintain" | "gain_muscle";
+}
+
+export interface CalculateCalorieGoalResponse {
+  bmr: number;
+  tdee: number;
+  dailyKcalTarget: number;
+  protein: number;
+  fat: number;
+  carbs: number;
+  explanation: string;
+}
+
+export const calculateCalorieGoal = async (
+  params: CalculateCalorieGoalParams
+): Promise<CalculateCalorieGoalResponse> => {
+  const res = await http.post<CalculateCalorieGoalResponse>("/ai/calculate-calorie-goal", params);
   return res.data;
 };
 

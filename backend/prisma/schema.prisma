@@ -13,26 +13,26 @@ enum Role {
 }
 
 model User {
-  id             String                @id @default(cuid())
-  email          String                @unique
-  passwordHash   String?
-  googleId       String?
-  name           String?
-  phone          String                @unique
-  dob            DateTime?
-  avatarUrl      String?
-  role           String                @default("USER")
-  isTwoFAEnabled Boolean               @default(false)
-  twoFASecret    String?
-  recipes        Recipe[]
-  mealPlans      MealPlan[]
-  preference     UserPreference?
-  foodLogs       FoodLog[]
-  shoppingLists  ShoppingList[]
-  aiLogs         AIRecommendationLog[]
+  id              String                @id @default(cuid())
+  email           String                @unique
+  passwordHash    String?
+  googleId        String?
+  name            String?
+  phone           String                @unique
+  dob             DateTime?
+  avatarUrl       String?
+  role            String                @default("USER")
+  isTwoFAEnabled  Boolean               @default(false)
+  twoFASecret     String?
+  recipes         Recipe[]
+  mealPlans       MealPlan[]
+  preference      UserPreference?
+  foodLogs        FoodLog[]
+  shoppingLists   ShoppingList[]
+  aiLogs          AIRecommendationLog[]
   favoriteRecipes UserFavoriteRecipe[]
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
 
   @@index([createdAt])
 }
@@ -65,6 +65,9 @@ model Ingredient {
   fiber     Float?       @default(0)
   sugar     Float?       @default(0)
   sodium    Float?       @default(0)
+  pricePerUnit  Float?   @default(0)
+  priceCurrency String?  @default("VND")
+  priceUpdatedAt DateTime?
   items     RecipeItem[]
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
@@ -73,27 +76,34 @@ model Ingredient {
 }
 
 model Recipe {
-  id          String       @id @default(cuid())
+  id          String               @id @default(cuid())
   title       String
   description String?
   region      String? // "Northern" | "Central" | "Southern"
-  cookTime    Int?         @default(30)
-  likes       Int?         @default(0)
-  totalKcal   Float?       @default(0)
-  protein     Float?       @default(0)
-  fat         Float?       @default(0)
-  carbs       Float?       @default(0)
+  cookTime    Int?                 @default(30)
+  likes       Int?                 @default(0)
+  totalKcal   Float?               @default(0)
+  protein     Float?               @default(0)
+  fat         Float?               @default(0)
+  carbs       Float?               @default(0)
   tags        String[]
   image       String?
   steps       Json?
-  authorId    String
-  author      User         @relation(fields: [authorId], references: [id])
+  authorId    String?
+  author      User?                @relation(fields: [authorId], references: [id])
   items       RecipeItem[]
   favorites   UserFavoriteRecipe[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
 
   FoodLog FoodLog[]
+
+  @@index([createdAt])
+  @@index([cookTime])
+  @@index([likes])
+  @@index([region])
+  @@index([likes, createdAt])
+  @@index([authorId])
 }
 
 model RecipeItem {
@@ -105,6 +115,9 @@ model RecipeItem {
   ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
   recipe       Recipe     @relation(fields: [recipeId], references: [id])
   createdAt    DateTime   @default(now())
+
+  @@index([recipeId])
+  @@index([ingredientId])
 }
 
 model MealPlan {
@@ -117,6 +130,9 @@ model MealPlan {
   totalKcal Float?   @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId, date])
 }
 
 model ShoppingList {
@@ -130,6 +146,8 @@ model ShoppingList {
   isCompleted Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([userId, createdAt])
 }
 
 model FoodLog {
@@ -147,6 +165,10 @@ model FoodLog {
   note      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId, date])
+  @@index([userId, mealType])
+  @@index([recipeId])
 }
 
 model AIRecommendationLog {
@@ -159,6 +181,9 @@ model AIRecommendationLog {
   durationMs Int? // thời gian xử lý
   feedback   String? // user feedback ("good", "too salty", etc.)
   createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([modelName])
 }
 
 model UserFavoriteRecipe {
@@ -172,4 +197,5 @@ model UserFavoriteRecipe {
   @@unique([userId, recipeId])
   @@index([userId])
   @@index([recipeId])
+  @@index([userId, createdAt])
 }
