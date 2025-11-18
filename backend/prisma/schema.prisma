@@ -65,6 +65,9 @@ model Ingredient {
   fiber     Float?       @default(0)
   sugar     Float?       @default(0)
   sodium    Float?       @default(0)
+  pricePerUnit  Float?   @default(0)
+  priceCurrency String?  @default("VND")
+  priceUpdatedAt DateTime?
   items     RecipeItem[]
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt

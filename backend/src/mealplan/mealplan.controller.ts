@@ -53,7 +53,10 @@ export class MealPlanController {
   @ApiQuery({ name: "slot", description: "Loại bữa ăn (breakfast, lunch, dinner)", required: false })
   @ApiResponse({ status: 200, description: "Gợi ý bữa ăn" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
-  async getTodaySuggest(@CurrentUser() u: any, @Query("slot") slot?: string) {
+  async getTodaySuggest(
+    @CurrentUser() u: any,
+    @Query("slot") slot?: "breakfast" | "lunch" | "dinner" | "all",
+  ) {
     return this.s.getTodaySuggest(u.userId, slot);
   }
 

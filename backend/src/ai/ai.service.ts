@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException } from "@nestjs/common";
+import {
+  Injectable,
+  BadRequestException,
+  Inject,
+  forwardRef,
+} from "@nestjs/common";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { PrismaService } from "../prisma/prisma.service";
 import { MealPlanService } from "../mealplan/mealplan.service";
@@ -10,6 +15,7 @@ export class AIService {
 
   constructor(
     private prisma: PrismaService,
+    @Inject(forwardRef(() => MealPlanService))
     private mealPlanService: MealPlanService,
   ) {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -25,6 +31,84 @@ export class AIService {
       // Log để debug
       console.log(`🤖 AI Service initialized with model: ${defaultModel}`);
     }
+  }
+
+  isEnabled() {
+    return Boolean(this.model);
+  }
+
+  private extractJson(text: string) {
+    const match = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+    if (match) {
+      try {
+        return JSON.parse(match[0]);
+      } catch (err) {
+        console.error("Failed to parse AI JSON:", err);
+      }
+    }
+    return null;
+  }
+
+  async fetchIngredientMarketPrices(
+    ingredients: Array<{ name: string; unit?: string }>,
+  ) {
+    if (!this.model) {
+      throw new BadRequestException(
+        "AI service is not configured. Please set GEMINI_API_KEY.",
+      );
+    }
+    if (!ingredients.length) return {};
+
+    const listText = ingredients
+      .map(
+        (ing, idx) =>
+          `${idx + 1}. ${ing.name}${ing.unit ? ` (${ing.unit})` : ""}`,
+      )
+      .join("\n");
+
+    const prompt = `Bạn là chuyên gia thị trường thực phẩm tại Việt Nam. Dựa trên dữ liệu giá trung bình bán lẻ tại các chợ và siêu thị phổ biến (Co.opmart, Winmart, Bách Hóa Xanh) trong ngày hôm nay (${new Date().toLocaleDateString("vi-VN")}), hãy ước lượng giá hiện tại cho từng nguyên liệu dưới đây.
+
+YÊU CẦU:
+- Giá tính theo đơn vị mặc định được cung cấp (ưu tiên gram/ml nếu không có thì dùng đơn vị bán phổ biến)
+- Trả về JSON array, không có Markdown hay giải thích ngoài JSON.
+- Mỗi phần tử phải có cấu trúc:
+{
+  "name": string,              // tên nguyên liệu
+  "unit": string,              // đơn vị tham chiếu (ví dụ: "gram", "ml", "kg", "bó")
+  "pricePerUnit": number,      // giá cho 1 đơn vị (đơn vị chuẩn trong dữ liệu)
+  "currency": "VND",
+  "source": string             // nguồn tham chiếu ngắn gọn, ví dụ "Bách Hóa Xanh 2025-11-18"
+}
+
+DANH SÁCH NGUYÊN LIỆU:
+${listText}
+
+Chỉ trả về JSON array hợp lệ.`;
+
+    const result = await this.model.generateContent(prompt);
+    const responseText = result.response.text();
+    const parsed = this.extractJson(responseText);
+
+    if (!Array.isArray(parsed)) {
+      throw new BadRequestException("AI trả về dữ liệu giá không hợp lệ.");
+    }
+
+    const map: Record<
+      string,
+      { pricePerUnit: number; currency?: string; source?: string; unit?: string }
+    > = {};
+    for (const entry of parsed) {
+      if (!entry?.name || typeof entry.pricePerUnit !== "number") continue;
+      const key = (entry.name as string).trim().toLowerCase();
+      map[key] = {
+        pricePerUnit: entry.pricePerUnit,
+        currency: entry.currency || "VND",
+        source: entry.source,
+        unit: entry.unit,
+      };
+    }
+
+    return map;
   }
 
   async listAvailableModels() {

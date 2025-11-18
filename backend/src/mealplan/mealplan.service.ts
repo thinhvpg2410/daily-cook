@@ -1,7 +1,10 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
+  Logger,
   NotFoundException,
+  forwardRef,
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateMealPlanDto } from "./dto/create-mealplan.dto";
@@ -18,6 +21,7 @@ import {
 
 import { SuggestMenuDto } from "./dto/suggest-menu.dto";
 import { Prisma } from "@prisma/client";
+import { AIService } from "../ai/ai.service";
 
 type Slots = { breakfast?: string[]; lunch?: string[]; dinner?: string[] };
 
@@ -31,7 +35,13 @@ function shuffle<T>(arr: T[]) {
 
 @Injectable()
 export class MealPlanService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(MealPlanService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    @Inject(forwardRef(() => AIService))
+    private aiService: AIService,
+  ) {}
 
   async suggestMeal(
     userId: string,
@@ -101,6 +111,14 @@ export class MealPlanService {
   }
 
   private asDate(d: string) {
+    if (!d) throw new BadRequestException("Ngày không hợp lệ");
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      const [year, month, day] = d.split("-").map((v) => Number(v));
+      const dt = new Date(year, month - 1, day);
+      return startOfDay(dt);
+    }
+
     const dt = new Date(d);
     if (isNaN(+dt)) throw new BadRequestException("Ngày không hợp lệ");
     return startOfDay(dt);
@@ -277,6 +295,7 @@ export class MealPlanService {
       include: { items: { include: { ingredient: true } } },
     });
 
+    const ingredientIds = new Set<string>();
     const agg = new Map<
       string,
       { ingredientId: string; name: string; unit?: string; qty: number }
@@ -284,6 +303,7 @@ export class MealPlanService {
     for (const r of recs) {
       for (const it of r.items) {
         const key = it.ingredient.id;
+        ingredientIds.add(key);
         const unit = it.unitOverride || it.ingredient.unit || undefined;
         const prev = agg.get(key);
         if (prev) prev.qty += it.amount;
@@ -296,9 +316,15 @@ export class MealPlanService {
           });
       }
     }
-    return {
-      items: Array.from(agg.values()).map((v) => ({ ...v, checked: false })),
-    };
+    if (this.aiService?.isEnabled()) {
+      await this.ensureDailyIngredientPrices(Array.from(ingredientIds));
+    }
+
+    const items = await this.attachPriceInfo(
+      Array.from(agg.values()).map((v) => ({ ...v, checked: false })),
+    );
+
+    return { items };
   }
 
   private async pickCandidates(opts: {
@@ -716,7 +742,10 @@ export class MealPlanService {
     };
   }
 
-  async getTodaySuggest(userId: string, slot?: string) {
+  async getTodaySuggest(
+    userId: string,
+    slot?: "breakfast" | "lunch" | "dinner" | "all",
+  ) {
     const today = startOfDay(new Date());
     const todayStr = formatISO(today, { representation: "date" });
 
@@ -773,106 +802,82 @@ export class MealPlanService {
       }
     }
 
-    // Nếu chưa có plan, tạo gợi ý thông minh
+    // Nếu chưa có plan, sử dụng suggestMenu với calorie filtering
     const pref = await this.prisma.userPreference.findUnique({
       where: { userId },
-    });
-
-    // Lấy lịch sử meal plans gần đây để tránh lặp lại
-    const recentPlans = await this.prisma.mealPlan.findMany({
-      where: {
-        userId,
-        date: { gte: addDays(today, -7), lt: today },
-      },
-      take: 7,
-    });
-
-    const recentRecipeIds = new Set<string>();
-    recentPlans.forEach((p) => {
-      const s = this.normalizeSlots(p.slots as any);
-      (s.breakfast ?? []).forEach((id) => recentRecipeIds.add(id));
-      (s.lunch ?? []).forEach((id) => recentRecipeIds.add(id));
-      (s.dinner ?? []).forEach((id) => recentRecipeIds.add(id));
     });
 
     // Lấy user preferences
     const region = pref?.likedTags?.find((t) =>
       ["Northern", "Central", "Southern"].includes(t),
-    );
+    ) as "Northern" | "Central" | "Southern" | undefined;
     const dietType = pref?.dietType ?? "normal";
     const dislikedIngredients = pref?.dislikedIngredients ?? [];
 
-    // Tạo gợi ý cho từng bữa ăn
-    const suggestForSlot = async (
-      slotType: "breakfast" | "lunch" | "dinner",
-    ) => {
-      const tags =
-        slotType === "breakfast"
-          ? ["Breakfast", "Veggie", "Soup"]
-          : slotType === "lunch"
-            ? ["RiceSide", "Grilled", "Stew", "Soup"]
-            : ["RiceSide", "Grilled", "Stew", "Soup", "Veggie"];
+    // Xác định chế độ ăn
+    const isDietMode = dietType === "low_carb" || pref?.goal === "lose_weight";
+    const isEatClean = dietType === "eat_clean" || false;
 
-      let where: any = {
-        tags: { hasSome: tags },
-      };
+    // Sử dụng suggestMenu để đảm bảo calorie filtering đúng
+    const suggestions = await this.suggestMenu(
+      userId,
+      {
+        date: todayStr,
+        slot: slot ?? "all",
+        region,
+        vegetarian: dietType === "vegan" || dietType === "vegetarian",
+        excludeIngredientNames: dislikedIngredients.join(","),
+        persist: false, // Chỉ suggest, không lưu
+      },
+      null, // recipeCount: null để dùng default
+      isDietMode,
+      isEatClean,
+    );
 
-      // Chỉ thêm notIn nếu có recent recipes để tránh
-      if (recentRecipeIds.size > 0) {
-        where.id = { notIn: Array.from(recentRecipeIds) };
+    const allDishes = suggestions.dishes || [];
+    
+    // Phân bổ vào breakfast/lunch/dinner dựa trên slot
+    let breakfast: any[] = [];
+    let lunch: any[] = [];
+    let dinner: any[] = [];
+
+    if (slot === "breakfast") {
+      breakfast = allDishes.slice(0, 2); // Breakfast: 1-2 món
+    } else if (slot === "lunch") {
+      lunch = allDishes.slice(0, 3); // Lunch: 2-3 món
+    } else if (slot === "dinner") {
+      dinner = allDishes.slice(0, 3); // Dinner: 2-3 món
+    } else {
+      // slot === "all" hoặc không có: phân bổ thông minh
+      const lightRecipes = allDishes.filter((r) =>
+        r.tags.some((t: string) => ["Veggie", "Soup", "Salad", "Breakfast"].includes(t))
+      );
+      const otherRecipes = allDishes.filter((r) =>
+        !r.tags.some((t: string) => ["Veggie", "Soup", "Salad", "Breakfast"].includes(t))
+      );
+
+      // Breakfast: prefer light recipes (1-2 items)
+      breakfast = lightRecipes.length > 0
+        ? lightRecipes.slice(0, 2)
+        : allDishes.length > 0 ? [allDishes[0]] : [];
+
+      // Lunch: remaining light recipes + half of other recipes
+      const remainingLight = lightRecipes.slice(2);
+      const lunchCount = Math.max(2, Math.ceil(otherRecipes.length / 2));
+      lunch = [...remainingLight, ...otherRecipes.slice(0, lunchCount)];
+
+      // Dinner: remaining other recipes
+      const dinnerTemp = otherRecipes.slice(lunchCount);
+      dinner = dinnerTemp.length > 0 ? dinnerTemp : lunch.length > 2 ? lunch.slice(-2) : [];
+      
+      // Adjust lunch nếu đã lấy cho dinner
+      if (dinnerTemp.length === 0 && lunch.length > 2) {
+        lunch = lunch.slice(0, -2);
       }
+    }
 
-      if (region) where.region = region;
-      if (dietType === "vegan") where.tags = { hasSome: [...tags, "Vegan"] };
-      if (dietType === "low_carb") where.tags = { hasSome: [...tags, "LowCarb"] };
-
-      const candidates = await this.prisma.recipe.findMany({
-        where,
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          image: true,
-          cookTime: true,
-          likes: true,
-          tags: true,
-          totalKcal: true,
-          region: true,
-        },
-        orderBy: [{ likes: "desc" }, { createdAt: "desc" }],
-        take: 20,
-      });
-
-      // Lọc bỏ các món có ingredient không thích
-      const filtered = candidates.filter((r) => {
-        // Nếu có disliked ingredients, cần check trong recipe items
-        // Tạm thời chỉ filter bằng title/description
-        if (dislikedIngredients.length === 0) return true;
-        const titleDesc = `${r.title} ${r.description || ""}`.toLowerCase();
-        return !dislikedIngredients.some((ing) =>
-          titleDesc.includes(ing.toLowerCase()),
-        );
-      });
-
-      // Chọn ngẫu nhiên 1-2 món
-      const shuffled = shuffle([...filtered]);
-      return shuffled.slice(0, slotType === "breakfast" ? 1 : 2);
-    };
-
-    const breakfast = await suggestForSlot("breakfast");
-    const lunch = await suggestForSlot("lunch");
-    const dinner = await suggestForSlot("dinner");
-
-    const allRecipeIds = [
-      ...breakfast.map((r) => r.id),
-      ...lunch.map((r) => r.id),
-      ...dinner.map((r) => r.id),
-    ];
-
-    const totalKcal =
-      breakfast.reduce((s, r) => s + (r.totalKcal ?? 0), 0) +
-      lunch.reduce((s, r) => s + (r.totalKcal ?? 0), 0) +
-      dinner.reduce((s, r) => s + (r.totalKcal ?? 0), 0);
+    // Tính tổng calories (đã được filter bởi suggestMenu)
+    const totalKcal = suggestions.totalKcal || 0;
 
     // Log recommendation to AI log
     await this.prisma.aIRecommendationLog.create({
@@ -883,19 +888,20 @@ export class MealPlanService {
           slot: slot || "all",
           region,
           dietType,
-          hasRecentHistory: recentPlans.length > 0,
+          dailyKcalTarget: pref?.dailyKcalTarget || 2000,
         },
         output: {
           breakfast: breakfast.map((r) => r.id),
           lunch: lunch.map((r) => r.id),
           dinner: dinner.map((r) => r.id),
           totalKcal,
+          withinLimit: suggestions.withinLimit,
         },
         modelName: "DailyCook-v1",
       },
     });
 
-    // Nếu chỉ request một slot cụ thể
+    // Return kết quả
     if (slot === "breakfast") {
       return {
         date: todayStr,
@@ -903,7 +909,7 @@ export class MealPlanService {
         breakfast,
         lunch: [],
         dinner: [],
-        totalKcal: breakfast.reduce((s, r) => s + (r.totalKcal ?? 0), 0),
+        totalKcal: breakfast.reduce((s, r) => s + (r.totalKcal || 0), 0),
       };
     }
     if (slot === "lunch") {
@@ -913,7 +919,7 @@ export class MealPlanService {
         breakfast: [],
         lunch,
         dinner: [],
-        totalKcal: lunch.reduce((s, r) => s + (r.totalKcal ?? 0), 0),
+        totalKcal: lunch.reduce((s, r) => s + (r.totalKcal || 0), 0),
       };
     }
     if (slot === "dinner") {
@@ -923,7 +929,7 @@ export class MealPlanService {
         breakfast: [],
         lunch: [],
         dinner,
-        totalKcal: dinner.reduce((s, r) => s + (r.totalKcal ?? 0), 0),
+        totalKcal: dinner.reduce((s, r) => s + (r.totalKcal || 0), 0),
       };
     }
 
@@ -935,5 +941,88 @@ export class MealPlanService {
       dinner,
       totalKcal,
     };
+  }
+
+  private async ensureDailyIngredientPrices(ingredientIds: string[]) {
+    if (!ingredientIds.length || !this.aiService?.isEnabled()) return;
+    const todayStart = startOfDay(new Date());
+
+    const pending = await this.prisma.ingredient.findMany({
+      where: {
+        id: { in: ingredientIds },
+        OR: [
+          { priceUpdatedAt: null },
+          { priceUpdatedAt: { lt: todayStart } },
+        ],
+      },
+      select: { id: true, name: true, unit: true },
+    });
+
+    if (!pending.length) return;
+
+    try {
+      const priceMap = await this.aiService.fetchIngredientMarketPrices(
+        pending.map((p) => ({ name: p.name, unit: p.unit || undefined })),
+      );
+
+      await Promise.all(
+        pending.map(async (ing) => {
+          const key = ing.name.trim().toLowerCase();
+          const info = priceMap[key];
+          if (!info?.pricePerUnit) return;
+
+          await this.prisma.ingredient.update({
+            where: { id: ing.id },
+            data: {
+              pricePerUnit: info.pricePerUnit,
+              priceCurrency: info.currency || "VND",
+              priceUpdatedAt: new Date(),
+            },
+          });
+        }),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Không thể cập nhật giá nguyên liệu: ${error?.message || error}`,
+      );
+    }
+  }
+
+  private async attachPriceInfo(
+    items: Array<{
+      ingredientId: string;
+      name: string;
+      unit?: string;
+      qty: number;
+      checked: boolean;
+    }>,
+  ) {
+    if (!items.length) return items;
+
+    const ingredients = await this.prisma.ingredient.findMany({
+      where: { id: { in: items.map((i) => i.ingredientId) } },
+      select: {
+        id: true,
+        pricePerUnit: true,
+        priceCurrency: true,
+        priceUpdatedAt: true,
+      },
+    });
+    const priceById = new Map(ingredients.map((ing) => [ing.id, ing] as const));
+
+    return items.map((item) => {
+      const price = priceById.get(item.ingredientId);
+      if (!price?.pricePerUnit) return item;
+      const estimatedCost = Number(
+        (price.pricePerUnit * item.qty).toFixed(2),
+      );
+      return {
+        ...item,
+        unitPrice: price.pricePerUnit,
+        currency: price.priceCurrency || "VND",
+        estimatedCost,
+        priceUpdatedAt: price.priceUpdatedAt,
+      };
+    });
   }
 }

@@ -1,9 +1,100 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { AIService } from "../ai/ai.service";
+import { startOfDay } from "date-fns";
 
 @Injectable()
 export class ShoppingListService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(ShoppingListService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private aiService: AIService,
+  ) {}
+
+  private async ensureDailyIngredientPrices(ingredientIds: string[]) {
+    if (!ingredientIds.length || !this.aiService.isEnabled()) return;
+    const todayStart = startOfDay(new Date());
+
+    const pending = await this.prisma.ingredient.findMany({
+      where: {
+        id: { in: ingredientIds },
+        OR: [
+          { priceUpdatedAt: null },
+          { priceUpdatedAt: { lt: todayStart } },
+        ],
+      },
+      select: { id: true, name: true, unit: true },
+    });
+
+    if (!pending.length) return;
+
+    try {
+      const priceMap = await this.aiService.fetchIngredientMarketPrices(
+        pending.map((p) => ({ name: p.name, unit: p.unit || undefined })),
+      );
+
+      await Promise.all(
+        pending.map(async (ing) => {
+          const key = ing.name.trim().toLowerCase();
+          const info = priceMap[key];
+          if (!info || !info.pricePerUnit) return;
+
+          await this.prisma.ingredient.update({
+            where: { id: ing.id },
+            data: {
+              pricePerUnit: info.pricePerUnit,
+              priceCurrency: info.currency || "VND",
+              priceUpdatedAt: new Date(),
+            },
+          });
+        }),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Không thể cập nhật giá nguyên liệu hôm nay: ${error?.message || error}`,
+      );
+    }
+  }
+
+  private async attachPriceInfo(
+    items: Array<{
+      ingredientId: string;
+      name: string;
+      unit?: string;
+      qty: number;
+      checked: boolean;
+    }>,
+  ) {
+    if (!items.length) return items;
+
+    const ingredients = await this.prisma.ingredient.findMany({
+      where: { id: { in: items.map((i) => i.ingredientId) } },
+      select: {
+        id: true,
+        pricePerUnit: true,
+        priceCurrency: true,
+        priceUpdatedAt: true,
+      },
+    });
+
+    const priceById = new Map(ingredients.map((ing) => [ing.id, ing] as const));
+
+    return items.map((item) => {
+      const price = priceById.get(item.ingredientId);
+      if (!price?.pricePerUnit) return item;
+      const estimatedCost = Number(
+        (price.pricePerUnit * item.qty).toFixed(2),
+      );
+      return {
+        ...item,
+        unitPrice: price.pricePerUnit,
+        currency: price.priceCurrency || "VND",
+        estimatedCost,
+        priceUpdatedAt: price.priceUpdatedAt,
+      };
+    });
+  }
 
   async buildFromRecipes(
     userId: string,
@@ -35,10 +126,16 @@ export class ShoppingListService {
           });
       }
     }
-    const items = Array.from(agg.values()).map((v) => ({
-      ...v,
-      checked: false,
-    }));
+    const ingredientIds = Array.from(agg.keys());
+
+    if (this.aiService.isEnabled()) {
+      await this.ensureDailyIngredientPrices(ingredientIds);
+    }
+
+    const items = await this.attachPriceInfo(
+      Array.from(agg.values()).map((v) => ({ ...v, checked: false })),
+    );
+
     if (!persist) return { title, items };
     return this.prisma.shoppingList.create({
       data: {
