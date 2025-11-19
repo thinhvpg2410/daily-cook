@@ -397,10 +397,8 @@ export default function NutritionTracker({ navigation }: any) {
   };
 
   const handleDatePress = (dateStr: string) => {
-    setSelectedDate(dateStr);
-    setShowDetailModal(true);
-    loadFoodLogs(dateStr);
-    loadPlanNutrition(dateStr);
+    // Chuyển sang màn hình Calendar với ngày được chọn
+    navigation.navigate("Calendar", { selectedDate: dateStr });
   };
 
   const getTodayStats = () => {
@@ -672,7 +670,12 @@ export default function NutritionTracker({ navigation }: any) {
             {history.map((d: any, i) => {
               const isToday = d.date === formatDate(new Date());
               return (
-                <View key={`label-${i}`} style={s.chartHeaderItem}>
+                <TouchableOpacity
+                  key={`label-${i}`}
+                  style={s.chartHeaderItem}
+                  onPress={() => handleDatePress(d.date)}
+                  activeOpacity={0.7}
+                >
                   {isToday && (
                     <View style={[s.todayDot, { marginBottom: 2 }]} />
                   )}
@@ -682,7 +685,7 @@ export default function NutritionTracker({ navigation }: any) {
                   <Text style={[s.chartValue, isToday && { fontWeight: "700", color: "#f77" }]}>
                     {Math.round(d.calories)}
                   </Text>
-                </View>
+                </TouchableOpacity>
               );
             })}
           </View>
