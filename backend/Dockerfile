@@ -3,21 +3,12 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Configure npm với retry và timeout
-RUN npm config set fetch-retries 5 && \
-    npm config set fetch-retry-mintimeout 20000 && \
-    npm config set fetch-retry-maxtimeout 120000 && \
-    npm config set fetch-timeout 60000
-
 # Copy package files
 COPY package*.json ./
 COPY prisma ./prisma/
 
 # Install all dependencies (including devDependencies for build)
-# Thêm retry wrapper
-RUN npm ci --legacy-peer-deps || \
-    (echo "First install failed, retrying..." && sleep 5 && npm ci --legacy-peer-deps) || \
-    (echo "Second install failed, retrying..." && sleep 10 && npm ci --legacy-peer-deps)
+RUN npm ci
 
 # Copy source code
 COPY . .
@@ -33,19 +24,11 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Configure npm với retry và timeout
-RUN npm config set fetch-retries 5 && \
-    npm config set fetch-retry-mintimeout 20000 && \
-    npm config set fetch-retry-maxtimeout 120000 && \
-    npm config set fetch-timeout 60000
-
 # Copy package files
 COPY package*.json ./
 
-# Install only production dependencies với retry
-RUN npm ci --omit=dev || \
-    (echo "First install failed, retrying..." && sleep 5 && npm ci --omit=dev) || \
-    (echo "Second install failed, retrying..." && sleep 10 && npm ci --omit=dev)
+# Install only production dependencies
+RUN npm ci --only=production
 
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
