@@ -548,6 +548,23 @@ export default function CalendarScreen({ navigation, route }: any) {
     return unsubscribe;
   }, [navigation, selectedDate, token]);
 
+  // Handle route params for selectedDate
+  useEffect(() => {
+    if (route?.params?.selectedDate && route.params.selectedDate !== selectedDate) {
+      setSelectedDate(route.params.selectedDate);
+      // Refresh meal plans for the selected date
+      if (token) {
+        const date = new Date(route.params.selectedDate);
+        const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+        const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+        fetchMealPlans(
+          startOfMonth.toISOString().split("T")[0],
+          endOfMonth.toISOString().split("T")[0]
+        );
+      }
+    }
+  }, [route?.params?.selectedDate, token]);
+
   // Handle route params for refresh
   useEffect(() => {
     if (route?.params?.refresh && route?.params?.refreshDate) {

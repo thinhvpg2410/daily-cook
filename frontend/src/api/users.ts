@@ -41,3 +41,7 @@ export const changePasswordApi = (data: ChangePasswordData) => {
   return http.patch("/users/me/password", data);
 };
 
+export const uploadAvatarApi = (imageData: string) => {
+  return http.post("/users/me/avatar", { imageData });
+};
+

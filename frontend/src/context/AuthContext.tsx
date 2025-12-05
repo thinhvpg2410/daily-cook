@@ -1,11 +1,11 @@
 import React, {createContext, useContext, useEffect, useMemo, useState} from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import {loginApi, registerApi, meApi} from "../api/auth";
+import {loginApi, registerApi, meApi, googleLoginApi} from "../api/auth";
 import {updatePreferencesApi} from "../api/users";
 import {getPendingPreferences, clearPendingPreferences} from "../utils/onboarding";
 
 
-type User = { id: string; email: string; name?: string; phone?: string };
+type User = { id: string; email: string; name?: string; phone?: string; avatarUrl?: string };
 
 type AuthCtx = {
     user: User | null;
@@ -15,6 +15,7 @@ type AuthCtx = {
         requires2FA: true;
         tmpToken: string
     }>;
+    loginWithGoogle: (idToken: string) => Promise<void>;
     register: (name: string, email: string, password: string, phone: string) => Promise<void>;
     logout: () => Promise<void>;
     refreshMe: () => Promise<void>;
@@ -40,7 +41,13 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({children}) => {
                 setToken(stored); //
                 try {
                     const me = await meApi();
-                    setUser(me);
+                    setUser({
+                        id: me.id,
+                        email: me.email,
+                        name: me.name,
+                        phone: me.phone,
+                        avatarUrl: me.avatarUrl
+                    });
                 } catch (err: any) {
                     //  clear token  chắc chắn là 401 (unauthorized)
                     const status = err?.response?.status;
@@ -66,7 +73,37 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({children}) => {
         }
         await AsyncStorage.setItem("token", res.accessToken);
         setToken(res.accessToken);
-        setUser({id: res.user.id, email: res.user.email, name: res.user.name, phone: (res.user as any)?.phone});
+        setUser({
+            id: res.user.id, 
+            email: res.user.email, 
+            name: res.user.name, 
+            phone: (res.user as any)?.phone,
+            avatarUrl: (res.user as any)?.avatarUrl
+        });
+        
+        // Kiểm tra và lưu pending preferences nếu có
+        try {
+            const pendingPrefs = await getPendingPreferences();
+            if (pendingPrefs) {
+                await updatePreferencesApi(pendingPrefs);
+                await clearPendingPreferences();
+            }
+        } catch (error) {
+            console.error("Error syncing pending preferences:", error);
+        }
+    };
+
+    const loginWithGoogle: AuthCtx["loginWithGoogle"] = async (idToken) => {
+        const res = await googleLoginApi(idToken);
+        await AsyncStorage.setItem("token", res.accessToken);
+        setToken(res.accessToken);
+        setUser({
+            id: res.user.id, 
+            email: res.user.email, 
+            name: res.user.name, 
+            phone: (res.user as any)?.phone,
+            avatarUrl: (res.user as any)?.avatarUrl
+        });
         
         // Kiểm tra và lưu pending preferences nếu có
         try {
@@ -112,7 +149,13 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({children}) => {
         // gọi /users/me; chỉ xoá token nếu 401
         try {
             const me = await meApi();
-            setUser(me);
+            setUser({
+                id: me.id,
+                email: me.email,
+                name: me.name,
+                phone: me.phone,
+                avatarUrl: me.avatarUrl
+            });
         } catch (err: any) {
             const status = err?.response?.status;
             if (status === 401) {
@@ -126,7 +169,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({children}) => {
     };
 
     const value = useMemo(
-        () => ({user, token, loading, login, register, logout, refreshMe}),
+        () => ({user, token, loading, login, loginWithGoogle, register, logout, refreshMe}),
         [user, token, loading]
     );
 

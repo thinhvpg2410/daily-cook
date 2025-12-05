@@ -123,36 +123,85 @@ export class AuthService {
 
   // Đăng nhập bằng Google ID Token (từ Google One Tap / Sign-In)
   async loginWithGoogle(idToken: string) {
-    if (!this.googleClient)
-      throw new BadRequestException("Google chưa cấu hình");
-    const ticket = await this.googleClient.verifyIdToken({
-      idToken,
-      audience: this.cfg.get("GOOGLE_CLIENT_ID"),
-    });
-    const payload = ticket.getPayload();
-    if (!payload?.email)
-      throw new UnauthorizedException("Không xác thực được tài khoản Google");
+    try {
+      if (!this.googleClient) {
+        console.error("Google client not initialized. Check GOOGLE_CLIENT_ID in .env");
+        throw new BadRequestException("Google chưa cấu hình. Vui lòng kiểm tra GOOGLE_CLIENT_ID trong backend .env");
+      }
 
-    const { email, sub: googleId, name, picture } = payload;
-    let user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      const phone = await this.genUniquePlaceholderPhone();
-      user = await this.prisma.user.create({
-        data: {
-          email,
-          googleId,
-          name: name || "",
-          avatarUrl: picture || "",
-          phone,
-        },
+      const googleClientId = this.cfg.get<string>("GOOGLE_CLIENT_ID");
+      if (!googleClientId) {
+        console.error("GOOGLE_CLIENT_ID not found in config");
+        throw new BadRequestException("GOOGLE_CLIENT_ID chưa được cấu hình trong backend .env");
+      }
+
+      console.log("Verifying Google ID token with audience:", googleClientId);
+      
+      const ticket = await this.googleClient.verifyIdToken({
+        idToken,
+        audience: googleClientId,
       });
-    } else if (!user.googleId) {
-      user = await this.prisma.user.update({
-        where: { id: user.id },
-        data: { googleId },
-      });
+      
+      const payload = ticket.getPayload();
+      if (!payload?.email) {
+        console.error("No email in Google token payload");
+        throw new UnauthorizedException("Không xác thực được tài khoản Google");
+      }
+
+      const { email, sub: googleId, name, picture } = payload;
+      console.log("Google login for email:", email);
+
+      let user = await this.prisma.user.findUnique({ where: { email } });
+      if (!user) {
+        const phone = await this.genUniquePlaceholderPhone();
+        user = await this.prisma.user.create({
+          data: {
+            email,
+            googleId,
+            name: name || "",
+            avatarUrl: picture || "",
+            phone,
+          },
+        });
+        console.log("Created new user from Google login:", user.id);
+      } else if (!user.googleId) {
+        user = await this.prisma.user.update({
+          where: { id: user.id },
+          data: { googleId },
+        });
+        console.log("Linked Google account to existing user:", user.id);
+      } else {
+        console.log("Existing user logged in via Google:", user.id);
+      }
+      
+      return this.sign(user);
+    } catch (error: any) {
+      console.error("Error in loginWithGoogle:", error);
+      
+      // Xử lý các lỗi cụ thể
+      if (error instanceof BadRequestException || error instanceof UnauthorizedException) {
+        throw error;
+      }
+      
+      // Lỗi từ Google Auth Library
+      if (error.message?.includes("Invalid token") || error.message?.includes("Token used too early")) {
+        throw new UnauthorizedException("Token Google không hợp lệ hoặc đã hết hạn");
+      }
+      
+      if (error.message?.includes("Wrong number of segments")) {
+        throw new BadRequestException("Format ID token không đúng");
+      }
+      
+      // Lỗi database
+      if (error.code === "P2002") {
+        throw new BadRequestException("Email đã tồn tại trong hệ thống");
+      }
+      
+      // Lỗi khác
+      throw new BadRequestException(
+        `Lỗi khi đăng nhập bằng Google: ${error.message || "Unknown error"}`
+      );
     }
-    return this.sign(user);
   }
 
   async enable2FA(userId: string) {

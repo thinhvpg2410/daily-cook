@@ -1,11 +1,16 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, Inject } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import * as argon2 from "argon2";
 import { ChangePasswordDto } from "./dto/change-password.dto";
+import * as admin from "firebase-admin";
+import { FirebaseAdmin } from "../auth/firebase-admin.provider";
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(FirebaseAdmin) private firebaseAdmin: admin.app.App
+  ) {}
 
   getById(id: string) {
     return this.prisma.user.findUnique({
@@ -112,5 +117,85 @@ export class UsersService {
         likedTags: updateData.likedTags ?? [],
       },
     });
+  }
+
+  async uploadAvatar(userId: string, imageData: string): Promise<{ avatarUrl: string }> {
+    try {
+      // Validate imageData (base64 data URL hoặc URL)
+      if (!imageData || typeof imageData !== 'string') {
+        throw new BadRequestException("Dữ liệu ảnh không hợp lệ");
+      }
+
+      // Nếu là URL từ internet, giữ nguyên
+      if (imageData.startsWith('http://') || imageData.startsWith('https://')) {
+        // Update avatarUrl trong database
+        await this.prisma.user.update({
+          where: { id: userId },
+          data: { avatarUrl: imageData },
+        });
+        return { avatarUrl: imageData };
+      }
+
+      // Nếu là base64 data URL, upload lên Firebase Storage
+      if (!imageData.startsWith('data:image/')) {
+        throw new BadRequestException("Định dạng ảnh không hợp lệ. Vui lòng gửi base64 data URL hoặc URL.");
+      }
+
+      // Parse base64 data URL
+      const matches = imageData.match(/^data:image\/(\w+);base64,(.+)$/);
+      if (!matches) {
+        throw new BadRequestException("Định dạng base64 không hợp lệ");
+      }
+
+      const imageType = matches[1] || 'jpeg';
+      const base64Data = matches[2];
+
+      // Convert base64 sang Buffer
+      const buffer = Buffer.from(base64Data, 'base64');
+
+      // Kiểm tra kích thước (max 2MB)
+      const maxSize = 2 * 1024 * 1024; // 2MB
+      if (buffer.length > maxSize) {
+        throw new BadRequestException("Ảnh quá lớn. Vui lòng chọn ảnh nhỏ hơn 2MB.");
+      }
+
+      // Tạo reference trong Firebase Storage
+      const storage = this.firebaseAdmin.storage();
+      const bucket = storage.bucket();
+      const timestamp = Date.now();
+      const fileName = `avatars/${userId}/avatar_${timestamp}.${imageType}`;
+      const file = bucket.file(fileName);
+
+      // Upload buffer lên Firebase Storage
+      await file.save(buffer, {
+        metadata: {
+          contentType: `image/${imageType}`,
+          cacheControl: 'public, max-age=31536000',
+        },
+        public: true, // Make file publicly accessible
+      });
+
+      // Make file publicly readable
+      await file.makePublic();
+
+      // Lấy public URL
+      const downloadURL = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+
+      // Update avatarUrl trong database
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { avatarUrl: downloadURL },
+      });
+
+      return { avatarUrl: downloadURL };
+    } catch (error: any) {
+      console.error("Error uploading avatar:", error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(
+        error.message || "Không thể upload ảnh. Vui lòng thử lại."
+      );
+    }
   }
 }

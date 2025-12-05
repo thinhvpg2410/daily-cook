@@ -28,7 +28,7 @@ import {
 } from "../api/food-log";
 import { searchRecipesApi, Recipe } from "../api/recipes";
 import { getPreferencesApi } from "../api/users";
-import { getDailyNutritionApi } from "../api/mealplan";
+import { getDailyNutritionApi, getMealPlansApi } from "../api/mealplan";
 
 const PLACEHOLDER_IMG =
   "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?q=80&w=1200&auto=format&fit=crop";
@@ -98,8 +98,156 @@ export default function NutritionTracker({ navigation }: any) {
       startDateObj.setDate(startDateObj.getDate() - 6);
       const startDate = formatDate(startDateObj);
 
-      const res = await getFoodLogStatsApi(startDate, endDate);
-      setStats(res.data);
+      // Lấy dữ liệu từ Food Log và Meal Plan
+      const [foodLogStatsRes, mealPlansRes] = await Promise.all([
+        getFoodLogStatsApi(startDate, endDate).catch(() => ({
+          data: { daily: [], average: { calories: 0, protein: 0, fat: 0, carbs: 0 } },
+        })),
+        getMealPlansApi({ start: startDate, end: endDate }).catch(() => ({ data: [] })),
+      ]);
+
+      const foodLogStats = foodLogStatsRes.data;
+      const mealPlans = mealPlansRes.data || [];
+
+      // Tạo map cho food logs theo ngày
+      const foodLogMap = new Map<string, { calories: number; protein: number; fat: number; carbs: number }>();
+      foodLogStats.daily.forEach((day: any) => {
+        foodLogMap.set(day.date, {
+          calories: day.calories,
+          protein: day.protein,
+          fat: day.fat,
+          carbs: day.carbs,
+        });
+      });
+
+      // Tính toán nutrition từ meal plans
+      const mealPlanMap = new Map<string, { calories: number; protein: number; fat: number; carbs: number }>();
+      
+      // Lấy tất cả recipe IDs từ meal plans
+      const allRecipeIds = new Set<string>();
+      mealPlans.forEach((plan: any) => {
+        const slots = plan.slots || {};
+        const breakfastIds = Array.isArray(slots.breakfast) ? slots.breakfast : [];
+        const lunchIds = Array.isArray(slots.lunch) ? slots.lunch : [];
+        const dinnerIds = Array.isArray(slots.dinner) ? slots.dinner : [];
+        [...breakfastIds, ...lunchIds, ...dinnerIds].forEach((id: string) => allRecipeIds.add(id));
+      });
+
+      // Fetch recipes nếu có
+      let recipesMap = new Map<string, any>();
+      if (allRecipeIds.size > 0) {
+        try {
+          const { http } = await import("../api/http");
+          const recipesRes = await Promise.all(
+            Array.from(allRecipeIds).map((id) =>
+              http.get(`/recipes/${id}`).catch(() => null)
+            )
+          );
+          recipesRes.forEach((res) => {
+            if (res?.data) {
+              recipesMap.set(res.data.id, res.data);
+            }
+          });
+        } catch (error) {
+          console.error("Error fetching recipes for meal plans:", error);
+        }
+      }
+
+      // Tính toán nutrition cho từng meal plan
+      mealPlans.forEach((plan: any) => {
+        const date = typeof plan.date === 'string' 
+          ? plan.date.split('T')[0] 
+          : new Date(plan.date).toISOString().split('T')[0];
+        
+        const slots = plan.slots || {};
+        const breakfastIds = Array.isArray(slots.breakfast) ? slots.breakfast : [];
+        const lunchIds = Array.isArray(slots.lunch) ? slots.lunch : [];
+        const dinnerIds = Array.isArray(slots.dinner) ? slots.dinner : [];
+        
+        const allIds = [...breakfastIds, ...lunchIds, ...dinnerIds];
+        
+        const totals = allIds.reduce(
+          (acc: any, recipeId: string) => {
+            const recipe = recipesMap.get(recipeId);
+            if (recipe) {
+              acc.calories += recipe.totalKcal || 0;
+              acc.protein += recipe.protein || 0;
+              acc.fat += recipe.fat || 0;
+              acc.carbs += recipe.carbs || 0;
+            }
+            return acc;
+          },
+          { calories: 0, protein: 0, fat: 0, carbs: 0 }
+        );
+
+        mealPlanMap.set(date, totals);
+      });
+
+      // Merge dữ liệu: ưu tiên Food Log nếu có, nếu không thì dùng Meal Plan
+      const allDates = new Set<string>();
+      foodLogStats.daily.forEach((day: any) => allDates.add(day.date));
+      mealPlanMap.forEach((_, date) => allDates.add(date));
+
+      // Đảm bảo có đủ 7 ngày
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+        allDates.add(formatDate(date));
+      }
+
+      const mergedDaily = Array.from(allDates)
+        .sort()
+        .reverse()
+        .slice(0, 7)
+        .map((date) => {
+          const foodLogData = foodLogMap.get(date);
+          const mealPlanData = mealPlanMap.get(date);
+
+          // Ưu tiên Food Log (đã ăn thực tế), nếu không có thì dùng Meal Plan (kế hoạch)
+          if (foodLogData && foodLogData.calories > 0) {
+            return {
+              date,
+              ...foodLogData,
+              source: 'foodLog' as const,
+            };
+          } else if (mealPlanData && mealPlanData.calories > 0) {
+            return {
+              date,
+              ...mealPlanData,
+              source: 'mealPlan' as const,
+            };
+          } else {
+            return {
+              date,
+              calories: 0,
+              protein: 0,
+              fat: 0,
+              carbs: 0,
+              source: 'none' as const,
+            };
+          }
+        });
+
+      // Tính toán trung bình
+      const avg = mergedDaily.reduce(
+        (acc, day) => ({
+          calories: acc.calories + day.calories / mergedDaily.length,
+          protein: acc.protein + day.protein / mergedDaily.length,
+          fat: acc.fat + day.fat / mergedDaily.length,
+          carbs: acc.carbs + day.carbs / mergedDaily.length,
+        }),
+        { calories: 0, protein: 0, fat: 0, carbs: 0 }
+      );
+
+      setStats({
+        daily: mergedDaily,
+        average: {
+          calories: Math.round(avg.calories),
+          protein: Math.round(avg.protein),
+          fat: Math.round(avg.fat),
+          carbs: Math.round(avg.carbs),
+        },
+      });
     } catch (error: any) {
       console.error("Error loading nutrition stats:", error);
       // Set default stats on error
@@ -209,8 +357,12 @@ export default function NutritionTracker({ navigation }: any) {
       setShowAddModal(false);
       setShowRecipeModal(false);
       setSearchQuery("");
-      loadStats();
-      loadFoodLogs(date);
+      // Update lịch sử 7 ngày và chi tiết
+      await Promise.all([
+        loadStats(), // Refresh lịch sử 7 ngày
+        loadFoodLogs(date),
+        loadPlanNutrition(date),
+      ]);
     } catch (error: any) {
       Alert.alert("Lỗi", error.response?.data?.message || "Không thể thêm món ăn");
     }
@@ -226,8 +378,12 @@ export default function NutritionTracker({ navigation }: any) {
           try {
             await deleteFoodLogApi(id);
             Alert.alert("Thành công", "Đã xóa món ăn");
-            loadStats();
-            loadFoodLogs(selectedDate || undefined);
+            // Update lịch sử 7 ngày và chi tiết
+            await Promise.all([
+              loadStats(), // Refresh lịch sử 7 ngày
+              loadFoodLogs(selectedDate || undefined),
+              loadPlanNutrition(selectedDate || undefined),
+            ]);
             if (editingLog?.id === id) {
               setShowDetailModal(false);
               setEditingLog(null);
@@ -241,10 +397,8 @@ export default function NutritionTracker({ navigation }: any) {
   };
 
   const handleDatePress = (dateStr: string) => {
-    setSelectedDate(dateStr);
-    setShowDetailModal(true);
-    loadFoodLogs(dateStr);
-    loadPlanNutrition(dateStr);
+    // Chuyển sang màn hình Calendar với ngày được chọn
+    navigation.navigate("Calendar", { selectedDate: dateStr });
   };
 
   const getTodayStats = () => {
@@ -261,6 +415,7 @@ export default function NutritionTracker({ navigation }: any) {
   const todayStats = getTodayStats();
   const planTotals =
     planNutrition?.date === formatDate(new Date()) ? planNutrition?.totals : null;
+  // Ưu tiên Food Log (đã ăn thực tế), nếu không có thì dùng Meal Plan (kế hoạch)
   const displayToday =
     todayStats.calories > 0
       ? todayStats
@@ -274,13 +429,72 @@ export default function NutritionTracker({ navigation }: any) {
     return { label: "Vừa", color: "#51cf66", icon: "remove-outline" };
   };
 
+  // DailyCook Tips - Logic thông minh hơn
+  const getDailyCookTips = (): string[] => {
   const tips: string[] = [];
-  if (avg.calories > calorieTarget * 1.1)
-    tips.push("Bạn đang hấp thụ nhiều calo, nên giảm khẩu phần hoặc tăng vận động.");
-  else if (avg.calories < calorieTarget * 0.85)
-    tips.push("Calo hơi thấp, nên thêm bữa phụ hoặc đồ ăn giàu năng lượng.");
-  if (avg.protein < 80) tips.push("Thiếu protein — bổ sung thêm trứng, cá, đậu hũ, sữa.");
-  if (tips.length === 0) tips.push("Chế độ ăn của bạn khá cân bằng trong tuần này! 🌿");
+    
+    // Tips về calories
+    if (avg.calories > calorieTarget * 1.1) {
+      tips.push("⚠️ Bạn đang hấp thụ nhiều calo trung bình. Hãy giảm khẩu phần ăn hoặc tăng cường vận động để cân bằng.");
+      tips.push("💡 Mẹo: Chọn các món luộc, hấp thay vì chiên xào để giảm calo mà vẫn đảm bảo dinh dưỡng.");
+    } else if (avg.calories < calorieTarget * 0.85) {
+      tips.push("📉 Calo trung bình hơi thấp. Hãy thêm bữa phụ lành mạnh hoặc tăng khẩu phần để đạt mục tiêu.");
+      tips.push("🥑 Mẹo: Bổ sung các thực phẩm giàu năng lượng như quả bơ, các loại hạt, sữa chua để tăng calo lành mạnh.");
+    }
+    
+    // Tips về protein
+    if (avg.protein < 80) {
+      tips.push("🥩 Protein hơi thấp. Hãy bổ sung thêm trứng, cá, thịt nạc, đậu hũ, sữa để tăng cơ bắp và sức khỏe.");
+      tips.push("💪 Mục tiêu: Phụ nữ cần ~46-50g protein/ngày, nam giới cần ~56-65g protein/ngày.");
+    } else if (avg.protein > 150) {
+      tips.push("⚖️ Protein quá cao có thể gây quá tải cho thận. Hãy cân bằng với carbs và chất béo lành mạnh.");
+    }
+    
+    // Tips về carbs
+    if (avg.carbs < 100) {
+      tips.push("🍞 Carbs hơi thấp. Carbs là nguồn năng lượng chính, hãy bổ sung gạo lứt, khoai lang, bánh mì nguyên cám.");
+    } else if (avg.carbs > 400) {
+      tips.push("🍚 Carbs quá cao. Hãy chọn carbs phức hợp (gạo lứt, yến mạch) thay vì carbs đơn giản (bánh kẹo, đồ ngọt).");
+    }
+    
+    // Tips về fat
+    if (avg.fat < 40) {
+      tips.push("🥑 Chất béo hơi thấp. Chất béo tốt cần thiết cho não và hormone. Hãy bổ sung quả bơ, cá béo, dầu olive.");
+    } else if (avg.fat > 100) {
+      tips.push("⚖️ Chất béo quá cao. Ưu tiên chất béo không bão hòa (cá, quả bơ, hạt) và hạn chế chất béo bão hòa (đồ chiên, mỡ động vật).");
+    }
+    
+    // Tips về sự đều đặn
+    if (history.length > 0) {
+      const caloriesDiff = Math.max(...history.map(d => d.calories)) - Math.min(...history.map(d => d.calories));
+      if (caloriesDiff > calorieTarget * 0.5) {
+        tips.push("📊 Lượng calo giữa các ngày dao động nhiều. Hãy cố gắng duy trì chế độ ăn đều đặn để cơ thể hấp thu tốt hơn.");
+      }
+    }
+    
+    // Tips tích cực
+    if (tips.length === 0 || (avg.calories >= calorieTarget * 0.9 && avg.calories <= calorieTarget * 1.1)) {
+      tips.push("🎉 Chế độ ăn của bạn khá cân bằng trong tuần này! Tiếp tục duy trì nhé!");
+      tips.push("💚 Mẹo: Uống đủ nước (2-2.5L/ngày) và ăn nhiều rau xanh để bổ sung vitamin và khoáng chất.");
+      tips.push("⏰ Nhớ ăn đúng bữa, không bỏ bữa sáng và ăn tối trước 8h tối để có giấc ngủ ngon hơn.");
+    }
+    
+    // Tips dinh dưỡng tổng quát
+    tips.push("🥗 Hãy đa dạng hóa thực đơn với nhiều loại thực phẩm khác nhau để đảm bảo đủ vitamin và khoáng chất.");
+    tips.push("🍽️ Nhai kỹ, ăn chậm giúp tiêu hóa tốt hơn và giảm cảm giác đói, từ đó kiểm soát calo hiệu quả hơn.");
+    
+    // Tips theo mùa/tuần
+    const dayOfWeek = new Date().getDay();
+    if (dayOfWeek === 1) { // Thứ 2
+      tips.push("💪 Đầu tuần mới, hãy lên kế hoạch thực đơn cho cả tuần để ăn uống lành mạnh và tiết kiệm thời gian!");
+    } else if (dayOfWeek === 6 || dayOfWeek === 0) { // Cuối tuần
+      tips.push("🏋️ Cuối tuần là cơ hội để thử các món mới và chuẩn bị meal prep cho tuần tới!");
+    }
+    
+    return tips.slice(0, 5); // Giới hạn 5 tips để không quá dài
+  };
+  
+  const tips = getDailyCookTips();
 
   const formatDateDisplay = (dateStr: string) => {
     try {
@@ -418,28 +632,108 @@ export default function NutritionTracker({ navigation }: any) {
           </Text>
         </View>
 
-        {/* Biểu đồ đơn giản */}
+        {/* Biểu đồ đơn giản - Lịch sử 7 ngày */}
+        <View style={s.sectionHeader}>
+          <View style={{ flex: 1 }}>
         <Text style={s.sectionTitle}>Lịch sử 7 ngày</Text>
-        <View style={s.chartContainer}>
-          {history.map((d, i) => {
-            const height = Math.max((d.calories / calorieTarget) * 100, 5);
-            const lvl = getLevel(d.calories);
-            return (
-              <TouchableOpacity
-                key={i}
-                style={s.chartBar}
-                onPress={() => handleDatePress(d.date)}
-              >
-                <View style={[s.chartBarFill, { height: `${height}%`, backgroundColor: lvl.color }]} />
-                <Text style={s.chartLabel}>{formatDateDisplay(d.date)}</Text>
-                <Text style={s.chartValue}>{Math.round(d.calories)}</Text>
-              </TouchableOpacity>
-            );
-          })}
+            <View style={{ flexDirection: "row", marginTop: 4, gap: 12 }}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <View style={[s.legendDot, { backgroundColor: "#51cf66" }]} />
+                <Text style={s.legendText}>Đã ăn</Text>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <View style={[s.legendDot, { backgroundColor: "#4dabf7" }]} />
+                <Text style={s.legendText}>Kế hoạch</Text>
+              </View>
+            </View>
+          </View>
+          <TouchableOpacity
+            onPress={async () => {
+              setRefreshing(true);
+              await loadStats();
+              setRefreshing(false);
+            }}
+            style={s.refreshButton}
+          >
+            <Ionicons name="refresh" size={18} color="#f77" />
+          </TouchableOpacity>
         </View>
+        {history.length === 0 ? (
+          <View style={[s.chartContainer, { justifyContent: "center", alignItems: "center", height: 100 }]}>
+            <Text style={{ color: "#999", fontSize: 14 }}>Chưa có dữ liệu dinh dưỡng</Text>
+            <Text style={{ color: "#999", fontSize: 12, marginTop: 4 }}>Thêm món ăn để xem lịch sử</Text>
+          </View>
+        ) : (
+        <View style={s.chartContainer}>
+          {/* Header space for labels */}
+          <View style={s.chartHeader}>
+            {history.map((d: any, i) => {
+              const isToday = d.date === formatDate(new Date());
+              return (
+                <TouchableOpacity
+                  key={`label-${i}`}
+                  style={s.chartHeaderItem}
+                  onPress={() => handleDatePress(d.date)}
+                  activeOpacity={0.7}
+                >
+                  {isToday && (
+                    <View style={[s.todayDot, { marginBottom: 2 }]} />
+                  )}
+                  <Text style={[s.chartLabel, isToday && { fontWeight: "700", color: "#f77" }]}>
+                    {formatDateDisplay(d.date)}
+                  </Text>
+                  <Text style={[s.chartValue, isToday && { fontWeight: "700", color: "#f77" }]}>
+                    {Math.round(d.calories)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          
+          {/* Chart bars */}
+          <View style={s.chartBarsContainer}>
+            {history.map((d: any, i) => {
+              // Giới hạn height tối đa 95% để không che mất labels
+              const heightPercent = Math.min((d.calories / calorieTarget) * 100, 95);
+              const height = Math.max(heightPercent, 5);
+              const lvl = getLevel(d.calories);
+              const isToday = d.date === formatDate(new Date());
+              const source = d.source || 'none'; // 'foodLog', 'mealPlan', hoặc 'none'
+              // Màu bar: xanh nếu từ meal plan, đỏ nếu từ food log
+              const barColor = source === 'mealPlan' ? '#4dabf7' : lvl.color;
+              return (
+                <TouchableOpacity
+                  key={i}
+                  style={s.chartBar}
+                  onPress={() => handleDatePress(d.date)}
+                >
+                  <View style={[s.chartBarFill, { height: `${height}%`, backgroundColor: barColor }]} />
+                  {isToday && (
+                    <View style={s.todayIndicator}>
+                      <View style={s.todayDot} />
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+        )}
 
-        {/* Bảng thống kê */}
+        {/* Bảng thống kê - Chi tiết 7 ngày */}
+        <View style={s.sectionHeader}>
         <Text style={s.sectionTitle}>Chi tiết 7 ngày</Text>
+          <TouchableOpacity
+            onPress={async () => {
+              setRefreshing(true);
+              await loadStats();
+              setRefreshing(false);
+            }}
+            style={s.refreshButton}
+          >
+            <Ionicons name="refresh" size={18} color="#f77" />
+          </TouchableOpacity>
+        </View>
         <View style={s.table}>
           <View style={[s.tableRow, s.tableHeader]}>
             <Text style={[s.cell, s.cellDate]}>Ngày</Text>
@@ -451,43 +745,74 @@ export default function NutritionTracker({ navigation }: any) {
           </View>
           {history.length === 0 ? (
             <View style={[s.tableRow, { paddingVertical: 20 }]}>
-              <Text style={[s.cell, { textAlign: "center", color: "#999" }]}>Chưa có dữ liệu dinh dưỡng</Text>
+              <Text style={[s.cell, { textAlign: "center", color: "#999", flex: 1 }]}>
+                Chưa có dữ liệu dinh dưỡng
+              </Text>
             </View>
           ) : (
             history.map((d, i) => {
               const lvl = getLevel(d.calories);
+              const isToday = d.date === formatDate(new Date());
+              const progress = Math.min((d.calories / calorieTarget) * 100, 100);
               return (
                 <TouchableOpacity
                   key={i}
-                  style={s.tableRow}
+                  style={[s.tableRow, isToday && { backgroundColor: "#fff5f5" }]}
                   onPress={() => handleDatePress(d.date)}
                 >
-                  <Text style={[s.cell, s.cellDate]}>{formatDateDisplay(d.date)}</Text>
+                  <View style={[s.cell, s.cellDate, { flexDirection: "row", alignItems: "center" }]}>
+                    {isToday && <View style={[s.todayDot, { marginRight: 6 }]} />}
+                    <Text style={[s.cell, s.cellDate, isToday && { fontWeight: "700", color: "#f77" }]}>
+                      {formatDateDisplay(d.date)}
+                    </Text>
+                  </View>
+                  <View style={s.cell}>
                   <Text style={[s.cell, { fontWeight: "600" }]}>{Math.round(d.calories)}</Text>
+                    <View style={[s.miniProgressBar, { width: `${progress}%` }]} />
+                  </View>
                   <View style={[s.cell, { flexDirection: "row", alignItems: "center", justifyContent: "center" }]}>
                     <Ionicons name={lvl.icon as any} color={lvl.color} size={16} style={{ marginRight: 4 }} />
                     <Text style={{ color: lvl.color, fontWeight: "600", fontSize: 13 }}>{lvl.label}</Text>
                   </View>
-                  <Text style={s.cell}>{Math.round(d.protein)}</Text>
-                  <Text style={s.cell}>{Math.round(d.carbs)}</Text>
-                  <Text style={s.cell}>{Math.round(d.fat)}</Text>
+                  <Text style={s.cell}>{Math.round(d.protein)}g</Text>
+                  <Text style={s.cell}>{Math.round(d.carbs)}g</Text>
+                  <Text style={s.cell}>{Math.round(d.fat)}g</Text>
                 </TouchableOpacity>
               );
             })
           )}
         </View>
 
-        {/* Gợi ý */}
+        {/* DailyCook Tips */}
         <View style={s.tipBox}>
-          <Ionicons name="leaf-outline" size={22} color="#f77" style={{ marginTop: 2 }} />
-          <View style={{ flex: 1 }}>
+          <View style={s.tipHeader}>
+            <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+              <Ionicons name="sparkles-outline" size={24} color="#f77" style={{ marginRight: 8 }} />
             <Text style={s.tipTitle}>DailyCook Tips</Text>
+            </View>
+            <TouchableOpacity
+              onPress={async () => {
+                // Refresh tips bằng cách reload stats
+                await loadStats();
+              }}
+              style={s.tipRefreshButton}
+            >
+              <Ionicons name="refresh-outline" size={18} color="#f77" />
+            </TouchableOpacity>
+          </View>
+          <View style={s.tipsList}>
             {tips.map((tip, i) => (
-              <Text key={i} style={s.tipText}>
-                • {tip}
-              </Text>
+              <View key={i} style={s.tipItem}>
+                <Ionicons name="checkmark-circle" size={16} color="#51cf66" style={{ marginRight: 8, marginTop: 2 }} />
+                <Text style={s.tipText}>{tip}</Text>
+              </View>
             ))}
           </View>
+          {tips.length > 0 && (
+            <Text style={s.tipFooter}>
+              💡 Tips được tạo dựa trên thói quen dinh dưỡng của bạn trong 7 ngày qua
+            </Text>
+          )}
         </View>
       </ScrollView>
 
@@ -734,39 +1059,99 @@ const s = StyleSheet.create({
   planMealLabel: { fontSize: 13, color: "#666", marginBottom: 4 },
   planMealValue: { fontSize: 15, fontWeight: "600", color: "#1c5ed6" },
 
-  sectionTitle: { fontSize: 16, fontWeight: "600", color: "#f77", marginTop: 8, marginBottom: 10 },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 8,
+    marginBottom: 10,
+  },
+  sectionTitle: { fontSize: 16, fontWeight: "600", color: "#f77" },
+  refreshButton: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: "#fff5f5",
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 4,
+  },
+  legendText: {
+    fontSize: 11,
+    color: "#666",
+  },
 
   chartContainer: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    alignItems: "flex-end",
-    height: 150,
     backgroundColor: "#fff8f8",
     borderRadius: 12,
     padding: 12,
     marginBottom: 16,
+    overflow: "hidden",
+  },
+  chartHeader: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginBottom: 8,
+    minHeight: 40,
+  },
+  chartHeaderItem: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "flex-start",
+  },
+  chartBarsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "flex-end",
+    height: 120,
+    paddingBottom: 4,
   },
   chartBar: {
     flex: 1,
     alignItems: "center",
     justifyContent: "flex-end",
     height: "100%",
+    position: "relative",
   },
   chartBarFill: {
     width: "80%",
     borderRadius: 4,
     minHeight: 4,
   },
+  todayIndicator: {
+    position: "absolute",
+    top: -8,
+    alignSelf: "center",
+    width: 8,
+    height: 8,
+    zIndex: 10,
+  },
+  todayDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#f77",
+  },
+  miniProgressBar: {
+    height: 2,
+    backgroundColor: "#f77",
+    borderRadius: 1,
+    marginTop: 2,
+  },
   chartLabel: {
     fontSize: 10,
     color: "#666",
-    marginTop: 4,
+    marginTop: 2,
+    textAlign: "center",
   },
   chartValue: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "600",
     color: "#333",
     marginTop: 2,
+    textAlign: "center",
   },
 
   table: {
@@ -788,15 +1173,46 @@ const s = StyleSheet.create({
   cellDate: { flex: 1.2, fontWeight: "600" },
 
   tipBox: {
-    flexDirection: "row",
-    alignItems: "flex-start",
     backgroundColor: "#fff8f8",
     borderRadius: 12,
-    padding: 14,
+    padding: 16,
     marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#fde8e8",
   },
-  tipTitle: { fontWeight: "600", color: "#f77", marginBottom: 6, fontSize: 15 },
-  tipText: { color: "#555", fontSize: 13, lineHeight: 18, marginBottom: 4 },
+  tipHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  tipTitle: { fontWeight: "700", color: "#f77", fontSize: 16 },
+  tipRefreshButton: {
+    padding: 4,
+    borderRadius: 6,
+  },
+  tipsList: {
+    gap: 10,
+  },
+  tipItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  tipText: { 
+    flex: 1,
+    color: "#555", 
+    fontSize: 13, 
+    lineHeight: 20,
+  },
+  tipFooter: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#fde8e8",
+    color: "#888",
+    fontSize: 11,
+    fontStyle: "italic",
+  },
 
   modalOverlay: {
     flex: 1,
