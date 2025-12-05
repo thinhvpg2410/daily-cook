@@ -4,6 +4,9 @@
     "builder": "DOCKERFILE",
     "dockerfilePath": "Dockerfile"
   },
+  "watch": {
+    "includePaths": ["backend/**"]
+  },
   "deploy": {
     "startCommand": "npm run start:prod",
     "restartPolicyType": "ON_FAILURE",
