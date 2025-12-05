@@ -11,6 +11,7 @@ import {
   SafeAreaView,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import TabBar from "./TabBar";
@@ -81,7 +82,7 @@ function mapToUi(r: ApiRecipe): UiCard {
 }
 
 // Get personalized greeting based on time
-function getGreeting(name?: string): { text: string; emoji: string } {
+function getGreeting(): { text: string; emoji: string } {
   const hour = new Date().getHours();
   let greeting = "Xin chào";
   let emoji = "👋";
@@ -101,7 +102,7 @@ function getGreeting(name?: string): { text: string; emoji: string } {
   }
 
   return {
-    text: name ? `${greeting}, ${name}` : greeting,
+    text:  greeting,
     emoji,
   };
 }
@@ -180,7 +181,7 @@ export default function HomeScreen({ navigation }: any) {
 
       try {
         if (token) {
-          const mine = await http.get("/users/me/recipes", {
+          const mine = await http.get("/recipes/me", {
             headers: { Authorization: `Bearer ${token}` },
           });
           const myRows: ApiRecipe[] = (mine.data ?? []).map((x: any) => ({
@@ -262,23 +263,99 @@ export default function HomeScreen({ navigation }: any) {
     }
   };
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const fallbackToday = new Date().toISOString().split("T")[0];
+
+  const extractRecipeIds = (items?: any[]) => {
+    if (!Array.isArray(items)) return [];
+    const ids = items
+      .map((item) => {
+        if (!item) return null;
+        if (typeof item === "string") return item;
+        if (typeof item.id === "string") return item.id;
+        if (typeof item.recipeId === "string") return item.recipeId;
+        if (typeof item.recipe?.id === "string") return item.recipe.id;
+        return null;
+      })
+      .filter((id): id is string => typeof id === "string" && id.trim().length > 0);
+    return ids;
+  };
+
+  const buildDedupedSlots = () => {
+    const seen = new Set<string>();
+    const unique = (ids: string[]) =>
+      ids.filter((id) => {
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+
+    return {
+      breakfast: unique(extractRecipeIds(todaySuggest?.breakfast)),
+      lunch: unique(extractRecipeIds(todaySuggest?.lunch)),
+      dinner: unique(extractRecipeIds(todaySuggest?.dinner)),
+    };
+  };
 
   const acceptTodaySuggest = async () => {
     if (!todaySuggest || !token) return;
+
+    // Đảm bảo sử dụng ngày hôm nay
+    const today = new Date().toISOString().split("T")[0];
+    const apiDate =
+      typeof todaySuggest.date === "string" && todaySuggest.date.trim()
+        ? todaySuggest.date.split("T")[0]
+        : today;
+
+    // Đảm bảo date là hôm nay
+    const targetDate = apiDate === today ? apiDate : today;
+
+    const slots = buildDedupedSlots();
+    
+    // Kiểm tra có món nào không
+    const totalRecipes = slots.breakfast.length + slots.lunch.length + slots.dinner.length;
+    if (totalRecipes === 0) {
+      Alert.alert("Thông báo", "Không có món nào để thêm vào lịch!");
+      return;
+    }
+
+    setTodaySuggestLoading(true);
     try {
       await upsertMealPlanApi({
-        date: todayStr,
-        slots: {
-          breakfast: todaySuggest.breakfast?.map((r: any) => r.id) || [],
-          lunch: todaySuggest.lunch?.map((r: any) => r.id) || [],
-          dinner: todaySuggest.dinner?.map((r: any) => r.id) || [],
-        },
+        date: targetDate,
+        slots,
       });
-      await fetchTodaySuggest();
-      await fetchTodayStats();
-    } catch (error) {
+      
+      // Refresh data
+      await Promise.all([
+        fetchTodaySuggest(),
+        fetchTodayStats(),
+      ]);
+      
+      Alert.alert(
+        "Thành công! ✅",
+        `Đã thêm ${totalRecipes} món vào lịch ngày hôm nay!\n\n- Bữa sáng: ${slots.breakfast.length} món\n- Bữa trưa: ${slots.lunch.length} món\n- Bữa tối: ${slots.dinner.length} món`,
+        [
+          {
+            text: "Xem lịch",
+            onPress: () => {
+              navigation.navigate("Calendar", { 
+                selectedDate: targetDate 
+              });
+            },
+          },
+          { text: "OK" },
+        ]
+      );
+    } catch (error: any) {
       console.error("Error accepting suggestion:", error);
+      const message =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.message ||
+        "Không thể chấp nhận gợi ý. Vui lòng thử lại.";
+      Alert.alert("Chấp nhận gợi ý thất bại", message);
+    } finally {
+      setTodaySuggestLoading(false);
     }
   };
 
