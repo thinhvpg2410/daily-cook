@@ -1,6 +1,6 @@
 // src/screens/CalendarScreen.tsx
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Image, ActivityIndicator, Modal, TextInput, FlatList, Alert } from "react-native";
+import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Image, ActivityIndicator, Modal, TextInput, FlatList } from "react-native";
 import { Calendar } from "react-native-calendars";
 import { Ionicons } from "@expo/vector-icons";
 import TabBar from "./TabBar";
@@ -49,7 +49,6 @@ export default function CalendarScreen({ navigation, route }: any) {
       });
 
       const plans = res.data || [];
-      console.log("Fetched meal plans:", plans);
       const data: Record<string, { breakfast: any[]; lunch: any[]; dinner: any[] }> = {};
       const newMealPlanIds: Record<string, string> = { ...mealPlanIds };
 
@@ -59,8 +58,6 @@ export default function CalendarScreen({ navigation, route }: any) {
           ? plan.date.split('T')[0] 
           : new Date(plan.date).toISOString().split('T')[0];
         const slots = plan.slots || {};
-        
-        console.log(`Processing plan for date ${date}:`, slots);
         
         // Store meal plan ID
         newMealPlanIds[date] = plan.id;
@@ -85,7 +82,6 @@ export default function CalendarScreen({ navigation, route }: any) {
           );
 
           const validRecipes = recipes.filter(Boolean);
-          console.log(`Valid recipes for ${date}:`, validRecipes.length);
           
           const breakfastRecipes = validRecipes
             .filter((r: any) => breakfastIds.includes(r.id))
@@ -117,12 +113,6 @@ export default function CalendarScreen({ navigation, route }: any) {
               likes: r.likes ?? 0,
             }));
           
-          console.log(`Recipes for ${date}:`, {
-            breakfast: breakfastRecipes.length,
-            lunch: lunchRecipes.length,
-            dinner: dinnerRecipes.length,
-          });
-          
           data[date] = {
             breakfast: breakfastRecipes,
             lunch: lunchRecipes,
@@ -135,7 +125,6 @@ export default function CalendarScreen({ navigation, route }: any) {
 
       // Merge with existing data to preserve other dates
       const mergedData = { ...mealData, ...data };
-      console.log("Merged meal data:", Object.keys(mergedData));
       setMealData(mergedData);
       setMealPlanIds(newMealPlanIds);
     } catch (error) {
@@ -147,17 +136,10 @@ export default function CalendarScreen({ navigation, route }: any) {
   
   // Get or create meal plan ID for selected date
   const getMealPlanId = async (): Promise<string> => {
-    console.log("=== GET MEAL PLAN ID ===");
-    console.log("Selected date:", selectedDate);
-    console.log("Current mealPlanIds state:", mealPlanIds);
-    
     // First check if we have it in state
     if (mealPlanIds[selectedDate]) {
-      console.log("Found meal plan ID in state:", mealPlanIds[selectedDate]);
       return mealPlanIds[selectedDate];
     }
-    
-    console.log("Meal plan ID not in state, fetching from API...");
     
     // Try to fetch from API
     try {
@@ -165,43 +147,37 @@ export default function CalendarScreen({ navigation, route }: any) {
         start: selectedDate, 
         end: selectedDate 
       });
-      console.log("Fetched plans from API:", plansRes.data);
       const plans = plansRes.data || [];
       const existingPlan = plans.find((p: any) => {
         const planDate = typeof p.date === 'string' 
           ? p.date.split('T')[0] 
           : new Date(p.date).toISOString().split('T')[0];
-        console.log(`Comparing plan date ${planDate} with selected date ${selectedDate}`);
         return planDate === selectedDate;
       });
       
       if (existingPlan) {
-        console.log("Found existing plan:", existingPlan);
         const newMealPlanIds = { ...mealPlanIds, [selectedDate]: existingPlan.id };
         setMealPlanIds(newMealPlanIds);
         return existingPlan.id;
       }
-      
-      console.log("No existing plan found for date");
     } catch (error) {
       console.error("Error fetching meal plan:", error);
+      // Continue to create new plan
     }
     
     // Create new meal plan if doesn't exist
-    console.log("Creating new meal plan...");
     try {
       const res = await upsertMealPlanApi({
         date: selectedDate,
         slots: { breakfast: [], lunch: [], dinner: [] },
       });
       const newId = res.data.id;
-      console.log("Created new meal plan with ID:", newId);
       const newMealPlanIds = { ...mealPlanIds, [selectedDate]: newId };
       setMealPlanIds(newMealPlanIds);
       return newId;
     } catch (error) {
       console.error("Error creating meal plan:", error);
-      throw error;
+      throw new Error("Không thể tạo meal plan. Vui lòng thử lại.");
     }
   };
   
@@ -228,71 +204,31 @@ export default function CalendarScreen({ navigation, route }: any) {
       setRecipeSearchQuery("");
       setRecipeSearchResults([]);
     } catch (error: any) {
-      Alert.alert("Lỗi", error?.response?.data?.message || "Không thể thêm món ăn");
+      console.error("Error adding recipe:", error);
     }
   };
   
-  // Remove recipe from slot
+  // Remove recipe from slot - xóa trực tiếp không cần xác nhận
   const handleRemoveRecipe = async (recipeId: string, slot: "breakfast" | "lunch" | "dinner") => {
     try {
-      console.log("=== REMOVE RECIPE FUNCTION CALLED ===");
-      console.log("Recipe ID:", recipeId, "Type:", typeof recipeId);
-      console.log("Slot:", slot);
-      console.log("Selected date:", selectedDate);
-      console.log("Current mealPlanIds:", mealPlanIds);
-      
-      // Get meal plan ID first
-      const mealPlanId = mealPlanIds[selectedDate] || await getMealPlanId();
-      console.log("Meal plan ID:", mealPlanId);
-      
-      if (!mealPlanId) {
-        Alert.alert("Lỗi", "Không tìm thấy meal plan ID");
+      if (!recipeId) {
+        console.error("Không tìm thấy ID món ăn");
         return;
       }
+
+      // Get meal plan ID first
+      const mealPlanId = mealPlanIds[selectedDate] || await getMealPlanId();
       
-      // Show confirmation and execute removal
-      Alert.alert(
-        "Xóa món",
-        "Bạn có chắc muốn xóa món này?",
-        [
-          { 
-            text: "Hủy", 
-            style: "cancel",
-            onPress: () => {
-              console.log("Remove cancelled by user");
-            }
-          },
-          {
-            text: "Xóa",
-            style: "destructive",
-            onPress: () => {
-              console.log("User confirmed remove - starting removal process");
-              executeRemove(mealPlanId, recipeId, slot);
-            },
-          },
-        ],
-        { cancelable: true }
-      );
-    } catch (error: any) {
-      console.error("=== ERROR IN REMOVE HANDLER ===");
-      console.error("Error:", error);
-      Alert.alert("Lỗi", error?.message || "Không thể xóa món ăn");
-    }
-  };
-  
-  // Execute the actual removal
-  const executeRemove = async (mealPlanId: string, recipeId: string, slot: "breakfast" | "lunch" | "dinner") => {
-    try {
-      console.log("=== EXECUTING REMOVE ===");
-      console.log(`Calling API: PATCH /mealplans/${mealPlanId}/slot with remove=${recipeId}`);
-      
-      const res = await patchMealPlanSlotApi(mealPlanId, {
+      if (!mealPlanId) {
+        console.error("Không tìm thấy meal plan");
+        return;
+      }
+
+      // Xóa trực tiếp không cần xác nhận
+      await patchMealPlanSlotApi(mealPlanId, {
         slot,
-        remove: recipeId,
+        remove: String(recipeId).trim(),
       });
-      
-      console.log("Remove API response:", res);
-      console.log("Remove result data:", res.data);
       
       // Refresh meal data
       const date = new Date(selectedDate);
@@ -302,53 +238,30 @@ export default function CalendarScreen({ navigation, route }: any) {
         startOfMonth.toISOString().split("T")[0],
         endOfMonth.toISOString().split("T")[0]
       );
-      
-      console.log("Remove completed successfully");
-      Alert.alert("Thành công", "Đã xóa món ăn khỏi lịch");
     } catch (error: any) {
-      console.error("=== ERROR EXECUTING REMOVE ===");
-      console.error("Error object:", error);
-      console.error("Error response:", error?.response);
-      console.error("Error response data:", error?.response?.data);
-      console.error("Error message:", error?.message);
-      Alert.alert("Lỗi", error?.response?.data?.message || error?.message || "Không thể xóa món ăn");
+      console.error("Error removing recipe:", error);
+      // Không hiển thị alert, chỉ log error
     }
   };
   
   // Replace recipe in slot
   const handleReplaceRecipe = async (oldRecipeId: string, newRecipeId: string, slot: "breakfast" | "lunch" | "dinner") => {
     try {
-      console.log("=== REPLACE RECIPE ===");
-      console.log("Old recipe ID:", oldRecipeId, "Type:", typeof oldRecipeId);
-      console.log("New recipe ID:", newRecipeId, "Type:", typeof newRecipeId);
-      console.log("Slot:", slot);
-      console.log("Selected date:", selectedDate);
-      console.log("Current meals for slot:", meals[slot]);
-      
       // Get meal plan ID first
       const mealPlanId = mealPlanIds[selectedDate] || await getMealPlanId();
-      console.log("Meal plan ID:", mealPlanId);
       
       if (!mealPlanId) {
-        Alert.alert("Lỗi", "Không tìm thấy meal plan ID");
+        console.error("Không tìm thấy meal plan");
         return;
       }
       
       const currentMeals = meals[slot].map((m: any) => m.id);
-      console.log("Current meal IDs:", currentMeals);
-      
       const newMeals = currentMeals.map((id: string) => id === oldRecipeId ? newRecipeId : id);
-      console.log("New meal IDs:", newMeals);
       
-      console.log(`Calling API: PATCH /mealplans/${mealPlanId}/slot with set=${JSON.stringify(newMeals)}`);
-      
-      const res = await patchMealPlanSlotApi(mealPlanId, {
+      await patchMealPlanSlotApi(mealPlanId, {
         slot,
         set: newMeals,
       });
-      
-      console.log("Replace API response:", res);
-      console.log("Replace result data:", res.data);
       
       // Refresh meal data
       const date = new Date(selectedDate);
@@ -364,15 +277,8 @@ export default function CalendarScreen({ navigation, route }: any) {
       setRecipeSearchQuery("");
       setRecipeSearchResults([]);
       setReplaceRecipeId(null);
-      
-      Alert.alert("Thành công", "Đã thay đổi món ăn");
     } catch (error: any) {
-      console.error("=== ERROR REPLACING RECIPE ===");
-      console.error("Error object:", error);
-      console.error("Error response:", error?.response);
-      console.error("Error response data:", error?.response?.data);
-      console.error("Error message:", error?.message);
-      Alert.alert("Lỗi", error?.response?.data?.message || error?.message || "Không thể thay đổi món ăn");
+      console.error("Error replacing recipe:", error);
     }
   };
   
@@ -508,11 +414,8 @@ export default function CalendarScreen({ navigation, route }: any) {
         startOfMonth.toISOString().split("T")[0],
         endOfMonth.toISOString().split("T")[0]
       );
-      
-      Alert.alert("Thành công", `Đã gợi ý và thêm món ăn vào lịch ngày ${selectedDate}!`);
     } catch (error: any) {
       console.error("Error suggesting meals:", error);
-      Alert.alert("Lỗi", error?.response?.data?.message || "Không thể gợi ý món ăn. Vui lòng thử lại!");
     } finally {
       setSuggesting(false);
     }
@@ -588,13 +491,6 @@ export default function CalendarScreen({ navigation, route }: any) {
   }, [route?.params, token]);
 
   const meals = mealData[selectedDate] || { breakfast: [], lunch: [], dinner: [] };
-  console.log(`Rendering meals for ${selectedDate}:`, {
-    hasData: !!mealData[selectedDate],
-    breakfast: meals.breakfast.length,
-    lunch: meals.lunch.length,
-    dinner: meals.dinner.length,
-    availableDates: Object.keys(mealData),
-  });
 
   const handleDateChange = (day: any) => {
     setSelectedDate(day.dateString);
@@ -691,48 +587,13 @@ export default function CalendarScreen({ navigation, route }: any) {
                       <View style={s.dishActions}>
                         <TouchableOpacity
                           style={s.actionButton}
-                          onPress={() => {
-                            console.log("Replace button pressed for dish:", dish);
-                            console.log("Dish ID:", dish.id, "Type:", typeof dish.id);
-                            console.log("Meal type:", mealType);
-                            console.log("Opening recipe modal for replace...");
-                            openRecipeModal(mealType, dish.id);
-                          }}
+                          onPress={() => openRecipeModal(mealType, dish.id)}
                         >
                           <Ionicons name="swap-horizontal" size={20} color="#4dabf7" />
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={s.actionButton}
-                          onPress={async () => {
-                            try {
-                              console.log("Remove button pressed for dish:", dish);
-                              console.log("Dish ID:", dish.id, "Type:", typeof dish.id);
-                              console.log("Meal type:", mealType);
-                              
-                              // Get meal plan ID
-                              let mealPlanId: string;
-                              try {
-                                mealPlanId = mealPlanIds[selectedDate] || await getMealPlanId();
-                                console.log("Meal plan ID for remove:", mealPlanId);
-                              } catch (error) {
-                                console.error("Error getting meal plan ID:", error);
-                                Alert.alert("Lỗi", "Không thể lấy meal plan ID");
-                                return;
-                              }
-                              
-                              if (!mealPlanId) {
-                                Alert.alert("Lỗi", "Không tìm thấy meal plan ID");
-                                return;
-                              }
-                              
-                              // Remove directly without confirmation
-                              console.log("Removing directly without confirmation");
-                              await executeRemove(mealPlanId, dish.id, mealType);
-                            } catch (error) {
-                              console.error("Error in remove button handler:", error);
-                              Alert.alert("Lỗi", "Đã xảy ra lỗi khi xóa món");
-                            }
-                          }}
+                          onPress={() => handleRemoveRecipe(dish.id, mealType)}
                         >
                           <Ionicons name="trash-outline" size={20} color="#ff6b6b" />
                         </TouchableOpacity>
