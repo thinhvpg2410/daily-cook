@@ -139,7 +139,7 @@ export default function HomeScreen({ navigation }: any) {
   const [yourRecipes, setYourRecipes] = useState<UiCard[]>([]);
   const [recentlyAdded, setRecentlyAdded] = useState<UiCard[]>([]);
 
-  const greeting = getGreeting(user?.name);
+  const greeting = getGreeting();
   const motivationalMsg = getMotivationalMessage();
 
   const fetchAll = async () => {
