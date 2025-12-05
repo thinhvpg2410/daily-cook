@@ -1,6 +1,6 @@
 import React, {createContext, useContext, useEffect, useMemo, useState} from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import {loginApi, registerApi, meApi} from "../api/auth";
+import {loginApi, registerApi, meApi, googleLoginApi} from "../api/auth";
 import {updatePreferencesApi} from "../api/users";
 import {getPendingPreferences, clearPendingPreferences} from "../utils/onboarding";
 
@@ -15,6 +15,7 @@ type AuthCtx = {
         requires2FA: true;
         tmpToken: string
     }>;
+    loginWithGoogle: (idToken: string) => Promise<void>;
     register: (name: string, email: string, password: string, phone: string) => Promise<void>;
     logout: () => Promise<void>;
     refreshMe: () => Promise<void>;
@@ -80,6 +81,24 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({children}) => {
         }
     };
 
+    const loginWithGoogle: AuthCtx["loginWithGoogle"] = async (idToken) => {
+        const res = await googleLoginApi(idToken);
+        await AsyncStorage.setItem("token", res.accessToken);
+        setToken(res.accessToken);
+        setUser({id: res.user.id, email: res.user.email, name: res.user.name, phone: (res.user as any)?.phone});
+        
+        // Kiểm tra và lưu pending preferences nếu có
+        try {
+            const pendingPrefs = await getPendingPreferences();
+            if (pendingPrefs) {
+                await updatePreferencesApi(pendingPrefs);
+                await clearPendingPreferences();
+            }
+        } catch (error) {
+            console.error("Error syncing pending preferences:", error);
+        }
+    };
+
     const register: AuthCtx["register"] = async (name, email, password, phone) => {
         const res = await registerApi(name, email, password, phone);
         if (res?.accessToken && res?.user) {
@@ -126,7 +145,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({children}) => {
     };
 
     const value = useMemo(
-        () => ({user, token, loading, login, register, logout, refreshMe}),
+        () => ({user, token, loading, login, loginWithGoogle, register, logout, refreshMe}),
         [user, token, loading]
     );
 

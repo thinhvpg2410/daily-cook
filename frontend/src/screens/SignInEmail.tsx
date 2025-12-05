@@ -8,19 +8,27 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  Platform,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAuth } from "../context/AuthContext";
+import * as Google from "expo-auth-session/providers/google";
+import * as WebBrowser from "expo-web-browser";
+import * as AuthSession from "expo-auth-session";
+
+// Required for Expo Auth Session
+WebBrowser.maybeCompleteAuthSession();
 
 export default function SignInEmail() {
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const navigation = useNavigation<any>();
 
   const [username, setUsername] = useState(""); // Email hoặc số điện thoại
   const [password, setPassword] = useState("");
   const [twofaCode, setTwofaCode] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [need2FA, setNeed2FA] = useState(false);
   const [tmpToken, setTmpToken] = useState<string | null>(null);
   const [errors, setErrors] = useState<{ 
@@ -29,6 +37,26 @@ export default function SignInEmail() {
     twofaCode?: string;
     general?: string;
   }>({});
+
+  // Google Auth configuration - Sử dụng useIdTokenAuthRequest để lấy id_token trực tiếp
+  // Lưu ý: Cần thêm GOOGLE_WEB_CLIENT_ID vào .env
+  // Tạo redirect URI đúng cho từng platform
+  const isWeb = Platform.OS === 'web';
+  
+  // Tạo redirect URI - khác nhau giữa web và native
+  // Với web, expo-auth-session sẽ tự động tạo URI dựa trên origin
+  const redirectUri = AuthSession.makeRedirectUri({
+    scheme: 'dailycook',
+    // Không cần path vì sẽ được xử lý tự động
+  });
+
+  // Với web, redirectUri sẽ là localhost origin, với native sẽ dùng custom scheme
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID, // Required for Expo
+    redirectUri,
+  });
 
   // Xác định keyboard type dựa trên input (tùy chọn - có thể để default)
   // Để đơn giản, dùng default để user có thể nhập cả email và phone
@@ -217,8 +245,120 @@ export default function SignInEmail() {
     }
   };
 
-  const onGoogleLogin = () => {
-    Alert.alert("Notice", "Google Sign-In feature is coming soon!");
+  // Handle Google Sign In response
+  React.useEffect(() => {
+    if (response?.type === "success") {
+      // Với useIdTokenAuthRequest, response sẽ chứa id_token trực tiếp
+      const idToken = 
+        response.params.id_token || 
+        response.params.idToken || 
+        response.authentication?.idToken;
+      
+      if (idToken) {
+        // Có id_token - sử dụng ngay để đăng nhập
+        handleGoogleSignIn(idToken);
+      } else {
+        setGoogleLoading(false);
+        console.error("No id_token in response:", response);
+        Alert.alert(
+          "Lỗi",
+          "Không thể lấy ID token từ Google. Vui lòng kiểm tra cấu hình."
+        );
+      }
+    } else if (response?.type === "error") {
+      setGoogleLoading(false);
+      const errorMessage = response.error?.message || response.error?.code || (response.error as any)?.error_description || "Unknown error";
+      console.error("Google Sign In error:", response.error);
+      
+      // Hiển thị thông báo lỗi chi tiết hơn
+      let userMessage = "Không thể đăng nhập bằng Google. Vui lòng thử lại.";
+      if (errorMessage.includes("unsupported_response_type")) {
+        userMessage = "Lỗi cấu hình Google OAuth. Vui lòng kiểm tra Web Client ID trong .env file.";
+      } else if (errorMessage.includes("redirect_uri")) {
+        userMessage = "Redirect URI không đúng. Vui lòng kiểm tra cấu hình trong Google Cloud Console.";
+      }
+      
+      Alert.alert("Lỗi đăng nhập Google", userMessage);
+    } else if (response?.type === "cancel") {
+      setGoogleLoading(false);
+    }
+  }, [response]);
+
+
+  const handleGoogleSignIn = async (idToken: string) => {
+    try {
+      setGoogleLoading(true);
+      setErrors({});
+      console.log("Attempting Google login with ID token length:", idToken?.length);
+      await loginWithGoogle(idToken);
+      navigation.reset({ index: 0, routes: [{ name: "Home" }] });
+    } catch (error: any) {
+      setGoogleLoading(false);
+      const errorMessage = getErrorMessage(error);
+      console.error("Google login error:", error);
+      
+      // Hiển thị thông báo lỗi chi tiết hơn
+      let userMessage = errorMessage || "Đăng nhập bằng Google thất bại. Vui lòng thử lại.";
+      
+      if (errorMessage.includes("Google chưa cấu hình") || errorMessage.includes("GOOGLE_CLIENT_ID")) {
+        userMessage = "Backend chưa được cấu hình Google. Vui lòng thêm GOOGLE_CLIENT_ID vào backend .env file.";
+      }
+      
+      Alert.alert("Lỗi đăng nhập", userMessage);
+    }
+  };
+
+  const onGoogleLogin = async () => {
+    try {
+      setGoogleLoading(true);
+      setErrors({});
+      
+      // Log redirect URI để debug
+      console.log("Platform:", Platform.OS);
+      console.log("Redirect URI:", redirectUri);
+      
+      if (!request) {
+        setGoogleLoading(false);
+        Alert.alert(
+          "Lỗi",
+          "Google Sign In chưa sẵn sàng. Vui lòng đảm bảo đã cấu hình Web Client ID trong .env"
+        );
+        return;
+      }
+      
+      // Try to prompt Google Sign In
+      // Với web, có thể cần xử lý khác một chút
+      const result = await promptAsync({
+        // Web-specific options
+        ...(isWeb && {
+          preferEphemeralSession: false,
+        }),
+      });
+      
+      if (result.type === "cancel") {
+        setGoogleLoading(false);
+      }
+      // Response sẽ được xử lý trong useEffect
+    } catch (error: any) {
+      setGoogleLoading(false);
+      console.error("Google Sign In error:", error);
+      
+      // Xử lý CORS error cụ thể
+      if (error.message?.includes('Cross-Origin-Opener-Policy') || error.message?.includes('window.closed')) {
+        Alert.alert(
+          "Lỗi CORS",
+          "Lỗi CORS khi đăng nhập Google trên web. Vui lòng:\n" +
+          "1. Kiểm tra redirect URI trong Google Cloud Console\n" +
+          "2. Đảm bảo redirect URI là: " + redirectUri + "\n" +
+          "3. Thử chạy trên Expo Go app thay vì web browser"
+        );
+      } else {
+        Alert.alert(
+          "Lỗi",
+          "Không thể khởi động đăng nhập Google. Vui lòng kiểm tra cấu hình và Redirect URI trong Google Cloud Console."
+        );
+      }
+    }
   };
 
   return (
@@ -306,14 +446,24 @@ export default function SignInEmail() {
         )}
       </TouchableOpacity>
 
-      {/* Google login (UI only for now) */}
-      <TouchableOpacity style={styles.googleButton} onPress={onGoogleLogin}>
+      {/* Google login */}
+      <TouchableOpacity 
+        style={[styles.googleButton, (googleLoading || loading) && styles.buttonDisabled]} 
+        onPress={onGoogleLogin}
+        disabled={googleLoading || loading}
+      >
+        {googleLoading ? (
+          <ActivityIndicator color="#333" />
+        ) : (
+          <>
         <Image
           source={require("../../assets/google-favicon-2025.jpg")}
           style={styles.googleIcon}
           resizeMode="contain"
         />
         <Text style={styles.googleText}>Đăng nhập bằng Google</Text>
+          </>
+        )}
       </TouchableOpacity>
 
       <TouchableOpacity onPress={() => navigation.navigate("SignUpEmail")}>
@@ -398,6 +548,9 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   buttonText: { color: "#fff", textAlign: "center", fontWeight: "600" },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
   link: { color: "#e53935", textAlign: "center", marginVertical: 6 },
   bottomText: { marginTop: 16, textAlign: "center", color: "#555" },
   googleButton: {
@@ -409,6 +562,7 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     padding: 12,
     marginTop: 20,
+    backgroundColor: "#fff",
   },
   googleIcon: { width: 20, height: 20, marginRight: 8 },
   googleText: { fontWeight: "500", color: "#333" },
