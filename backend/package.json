@@ -25,15 +25,15 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
-    "@prisma/client": "^6.17.1",
     "@google/generative-ai": "^0.24.1",
-    "@nestjs/common": "^11.1.6",
+    "@nestjs/common": "^11.1.9",
     "@nestjs/config": "^4.0.2",
-    "@nestjs/core": "^11.1.6",
+    "@nestjs/core": "^11.1.9",
     "@nestjs/jwt": "^11.0.1",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.1.6",
     "@nestjs/swagger": "^11.2.1",
+    "@prisma/client": "^6.17.1",
     "argon2": "^0.44.0",
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",

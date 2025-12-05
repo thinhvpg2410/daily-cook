@@ -3445,7 +3445,7 @@ async function main() {
         carbs: Math.round(totalCarbs * 10) / 10,
         tags: r.tags,
         image: r.image,
-        steps: r.steps as Prisma.InputJsonValue,
+        steps: r.steps as any,
         items: { create: items },
       },
     });
