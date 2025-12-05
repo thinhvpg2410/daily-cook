@@ -15,6 +15,7 @@ import SignUpEmail from "./src/screens/SignUpEmail";
 import ForgotPasswordEmail from "./src/screens/ForgotPasswordEmail";
 import ForgotPasswordCode from "./src/screens/ForgotPasswordCode";
 import ResetPassword from "./src/screens/ResetPassword";
+import ResetPasswordSuccess from "./src/screens/ResetPasswordSuccess";
 
 // Main
 import HomeScreen from "./src/screens/HomeScreen";
@@ -137,6 +138,7 @@ function RootNavigator() {
             <Stack.Screen name="ForgotPasswordEmail" component={ForgotPasswordEmail}/>
             <Stack.Screen name="ForgotPasswordCode" component={ForgotPasswordCode}/>
             <Stack.Screen name="ResetPassword" component={ResetPassword}/>
+            <Stack.Screen name="ResetPasswordSuccess" component={ResetPasswordSuccess}/>
         </Stack.Navigator>
     );
 }

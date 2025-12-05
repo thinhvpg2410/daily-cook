@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   UnauthorizedException,
+  Logger,
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import * as argon2 from "argon2";
@@ -9,9 +10,11 @@ import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import { TotpService } from "./totp.service";
 import { OAuth2Client } from "google-auth-library";
+import { EmailService } from "../email/email.service";
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   private googleClient?: OAuth2Client;
 
   constructor(
@@ -19,6 +22,7 @@ export class AuthService {
     private jwt: JwtService,
     private cfg: ConfigService,
     private totp: TotpService,
+    private emailService: EmailService,
   ) {
     const cid = this.cfg.get<string>("GOOGLE_CLIENT_ID");
     if (cid) this.googleClient = new OAuth2Client(cid);
@@ -268,8 +272,9 @@ export class AuthService {
   private otpStore = new Map<string, { code: string; expiresAt: number }>();
 
   async forgotPassword(email: string) {
+    const normalizedEmail = email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({
-      where: { email: email.trim().toLowerCase() },
+      where: { email: normalizedEmail },
     });
 
     if (!user) {
@@ -282,17 +287,36 @@ export class AuthService {
     const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
 
     // Store OTP (keyed by email)
-    this.otpStore.set(email.toLowerCase(), { code, expiresAt });
+    this.otpStore.set(normalizedEmail, { code, expiresAt });
 
-    // TODO: Send email with OTP
-    // For now, in development, we'll return the code
-    // In production, remove this and send via email service
-    console.log(`[DEV] OTP for ${email}: ${code}`);
+    try {
+      // Send email with OTP via Mailjet
+      await this.emailService.sendForgotPasswordEmail(
+        normalizedEmail,
+        code,
+        user.name || undefined
+      );
+      this.logger.log(`Password reset email sent to ${normalizedEmail}`);
+    } catch (error: any) {
+      this.logger.error(`Failed to send password reset email to ${normalizedEmail}:`, error);
+      
+      // In development, still log the code for testing
+      if (process.env.NODE_ENV === "development") {
+        console.log(`[DEV] OTP for ${normalizedEmail}: ${code}`);
+        return {
+          message: "Mã OTP đã được gửi đến email của bạn (hoặc xem console)",
+          devCode: code,
+        };
+      }
+      
+      // In production, don't reveal the error details
+      throw new BadRequestException(
+        "Không thể gửi email. Vui lòng thử lại sau hoặc liên hệ hỗ trợ."
+      );
+    }
 
     return {
       message: "Mã OTP đã được gửi đến email của bạn",
-      // Remove this in production
-      devCode: process.env.NODE_ENV === "development" ? code : undefined,
     };
   }
 
