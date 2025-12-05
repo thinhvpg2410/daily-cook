@@ -2,40 +2,39 @@
 FROM node:18-alpine AS builder
 WORKDIR /app/backend
 
-# Tooling needed for native deps (argon2/bcrypt/sqlite3) on Alpine
 RUN apk add --no-cache python3 make g++ libc6-compat openssl-dev
 
-# Copy backend manifests and sources (keep context small but complete)
+# Copy backend files
 COPY backend/package*.json ./
 COPY backend/tsconfig*.json ./
 COPY backend/nest-cli.json ./
 COPY backend/prisma ./prisma
 COPY backend/src ./src
 
-# Install deps and build the Nest app
+# Install dependencies + generate Prisma + build NestJS
 RUN npm ci \
  && npx prisma generate \
  && npm run build \
  && ls -la dist
 
-# Stage 2: Runtime image
+# Stage 2: Runtime
 FROM node:18-alpine
 WORKDIR /app/backend
-# Tooling for native deps at install time in runtime layer
+
 RUN apk add --no-cache python3 make g++ libc6-compat openssl-dev
 
-# Copy manifests and Prisma schema first so postinstall can generate client
+# Copy only required files
 COPY backend/package*.json ./
 COPY backend/prisma ./prisma
 
-# Reuse built node_modules from builder to avoid rebuilding native deps,
-# then prune devDependencies for a smaller runtime image.
+# Copy built node_modules + dist from builder
 COPY --from=builder /app/backend/node_modules ./node_modules
-RUN npm prune --omit=dev
-
-# Bring compiled output
 COPY --from=builder /app/backend/dist ./dist
 
-EXPOSE 3000
-CMD ["npm", "run", "start:prod"]
+# Remove devDependencies
+RUN npm prune --omit=dev
 
+EXPOSE 3000
+
+CMD ["node", "dist/main.js"]
+    
