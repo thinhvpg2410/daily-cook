@@ -24,6 +24,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
+    "@prisma/client": "^6.17.1",
     "@google/generative-ai": "^0.24.1",
     "@nestjs/common": "^11.1.6",
     "@nestjs/config": "^4.0.2",
@@ -55,7 +56,6 @@
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.1.6",
-    "@prisma/client": "^6.17.1",
     "@types/bcrypt": "^6.0.0",
     "@types/caseless": "^0.12.5",
     "@types/express": "^5.0.3",

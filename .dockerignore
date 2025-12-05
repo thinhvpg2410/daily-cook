@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log
+dist
+frontend
+.git
+.gitignore
+.env
+.env.*
+tmp
+.turbo
+.next
+pnpm-lock.yaml
+*.log
+
