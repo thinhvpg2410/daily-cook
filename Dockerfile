@@ -2,8 +2,8 @@
 FROM node:18-alpine AS builder
 WORKDIR /app
 
-# Tooling needed for native deps (argon2/bcrypt) on Alpine
-RUN apk add --no-cache python3 make g++ libc6-compat
+# Tooling needed for native deps (argon2/bcrypt/sqlite3) on Alpine
+RUN apk add --no-cache python3 make g++ libc6-compat openssl-dev
 
 # Copy backend manifests and sources (keep context small but complete)
 COPY backend/package*.json ./
@@ -21,7 +21,8 @@ RUN npm ci \
 # Stage 2: Runtime image
 FROM node:18-alpine
 WORKDIR /app
-RUN apk add --no-cache libc6-compat
+# Tooling for native deps at install time in runtime layer
+RUN apk add --no-cache python3 make g++ libc6-compat openssl-dev
 
 # Copy manifests and Prisma schema first so postinstall can generate client
 COPY backend/package*.json ./
