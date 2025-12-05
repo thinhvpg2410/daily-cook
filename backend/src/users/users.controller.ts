@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Patch, Post, UseGuards } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from "@nestjs/swagger";
 import { UsersService } from "./users.service";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
@@ -39,6 +39,15 @@ export class UsersController {
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
   changePass(@CurrentUser() user: any, @Body() dto: ChangePasswordDto) {
     return this.users.changePassword(user.userId, dto);
+  }
+
+  @Post("me/avatar")
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: "Upload avatar lên Firebase Storage" })
+  @ApiResponse({ status: 200, description: "Upload avatar thành công" })
+  @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
+  uploadAvatar(@CurrentUser() user: any, @Body() dto: { imageData: string }) {
+    return this.users.uploadAvatar(user.userId, dto.imageData);
   }
 
   @Get("me/preferences")

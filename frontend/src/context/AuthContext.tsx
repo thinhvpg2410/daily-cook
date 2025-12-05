@@ -5,7 +5,7 @@ import {updatePreferencesApi} from "../api/users";
 import {getPendingPreferences, clearPendingPreferences} from "../utils/onboarding";
 
 
-type User = { id: string; email: string; name?: string; phone?: string };
+type User = { id: string; email: string; name?: string; phone?: string; avatarUrl?: string };
 
 type AuthCtx = {
     user: User | null;
@@ -41,7 +41,13 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({children}) => {
                 setToken(stored); //
                 try {
                     const me = await meApi();
-                    setUser(me);
+                    setUser({
+                        id: me.id,
+                        email: me.email,
+                        name: me.name,
+                        phone: me.phone,
+                        avatarUrl: me.avatarUrl
+                    });
                 } catch (err: any) {
                     //  clear token  chắc chắn là 401 (unauthorized)
                     const status = err?.response?.status;
@@ -67,7 +73,13 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({children}) => {
         }
         await AsyncStorage.setItem("token", res.accessToken);
         setToken(res.accessToken);
-        setUser({id: res.user.id, email: res.user.email, name: res.user.name, phone: (res.user as any)?.phone});
+        setUser({
+            id: res.user.id, 
+            email: res.user.email, 
+            name: res.user.name, 
+            phone: (res.user as any)?.phone,
+            avatarUrl: (res.user as any)?.avatarUrl
+        });
         
         // Kiểm tra và lưu pending preferences nếu có
         try {
@@ -85,7 +97,13 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({children}) => {
         const res = await googleLoginApi(idToken);
         await AsyncStorage.setItem("token", res.accessToken);
         setToken(res.accessToken);
-        setUser({id: res.user.id, email: res.user.email, name: res.user.name, phone: (res.user as any)?.phone});
+        setUser({
+            id: res.user.id, 
+            email: res.user.email, 
+            name: res.user.name, 
+            phone: (res.user as any)?.phone,
+            avatarUrl: (res.user as any)?.avatarUrl
+        });
         
         // Kiểm tra và lưu pending preferences nếu có
         try {
@@ -131,7 +149,13 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({children}) => {
         // gọi /users/me; chỉ xoá token nếu 401
         try {
             const me = await meApi();
-            setUser(me);
+            setUser({
+                id: me.id,
+                email: me.email,
+                name: me.name,
+                phone: me.phone,
+                avatarUrl: me.avatarUrl
+            });
         } catch (err: any) {
             const status = err?.response?.status;
             if (status === 401) {
