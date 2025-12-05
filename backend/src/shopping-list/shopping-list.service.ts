@@ -77,8 +77,15 @@ export class ShoppingListService {
         priceUpdatedAt: true,
       },
     });
-
-    const priceById = new Map(ingredients.map((ing) => [ing.id, ing] as const));
+    type IngredientPriceSelect = {
+      id: string;
+      pricePerUnit: number | null;
+      priceCurrency: string | null;
+      priceUpdatedAt: Date | null;
+    };
+    const priceById = new Map<string, IngredientPriceSelect>(
+      ingredients.map((ing) => [ing.id, ing]),
+    );
 
     return items.map((item) => {
       const price = priceById.get(item.ingredientId);
