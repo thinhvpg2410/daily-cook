@@ -27,7 +27,11 @@ RUN apk add --no-cache python3 make g++ libc6-compat openssl-dev
 # Copy manifests and Prisma schema first so postinstall can generate client
 COPY backend/package*.json ./
 COPY backend/prisma ./prisma
-RUN npm ci --omit=dev
+
+# Reuse built node_modules from builder to avoid rebuilding native deps,
+# then prune devDependencies for a smaller runtime image.
+COPY --from=builder /app/node_modules ./node_modules
+RUN npm prune --omit=dev
 
 # Bring compiled output
 COPY --from=builder /app/dist ./dist
