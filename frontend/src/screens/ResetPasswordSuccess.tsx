@@ -51,7 +51,7 @@ export default function ResetPasswordSuccess() {
         <Text style={styles.title}>Đặt lại mật khẩu thành công!</Text>
         <Text style={styles.subtitle}>
           Mật khẩu của bạn đã được đặt lại thành công.{"\n"}
-          Bây giờ bạn có thể đăng nhập với mật khẩu mới.
+          Bây giờ bạn có thể đăng nhập  với mật khẩu mới.
         </Text>
 
         {email && (
