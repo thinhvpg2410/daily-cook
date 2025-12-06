@@ -20,6 +20,7 @@ import { http } from "../api/http";
 import {
   getTodaySuggestApi,
   upsertMealPlanApi,
+  getDailyNutritionApi,
 } from "../api/mealplan";
 import { getFoodLogStatsApi } from "../api/food-log";
 import { getPreferencesApi } from "../api/users";
@@ -241,12 +242,43 @@ export default function HomeScreen({ navigation }: any) {
     if (!token) return;
     try {
       const today = new Date().toISOString().split("T")[0];
-      const res = await getFoodLogStatsApi(today, today);
-      if (res.data?.daily && res.data.daily.length > 0) {
-        setTodayStats(res.data.daily[0]);
-      } else {
-        setTodayStats({ calories: 0, protein: 0, fat: 0, carbs: 0 });
+      
+      // Lấy dinh dưỡng từ FoodLog (đã ăn)
+      const foodLogRes = await getFoodLogStatsApi(today, today);
+      const foodLogStats = foodLogRes.data?.daily && foodLogRes.data.daily.length > 0
+        ? foodLogRes.data.daily[0]
+        : { calories: 0, protein: 0, fat: 0, carbs: 0 };
+      
+      // Lấy dinh dưỡng từ MealPlan (kế hoạch)
+      let mealPlanStats = { calories: 0, protein: 0, fat: 0, carbs: 0 };
+      try {
+        const mealPlanRes = await getDailyNutritionApi({ date: today });
+        if (mealPlanRes.data?.totals) {
+          mealPlanStats = {
+            calories: mealPlanRes.data.totals.calories || 0,
+            protein: mealPlanRes.data.totals.protein || 0,
+            fat: mealPlanRes.data.totals.fat || 0,
+            carbs: mealPlanRes.data.totals.carbs || 0,
+          };
+        }
+      } catch (mealPlanError) {
+        // Nếu không có meal plan hoặc lỗi, chỉ dùng food log
+        console.warn("No meal plan nutrition found:", mealPlanError);
       }
+      
+      // Kết hợp cả hai: ưu tiên FoodLog (đã ăn thực tế), nếu chưa có thì dùng MealPlan
+      // Logic: Nếu FoodLog có giá trị > 0, dùng FoodLog (đã ăn thực tế)
+      // Nếu FoodLog = 0 nhưng có MealPlan, dùng MealPlan (kế hoạch) để match với suggestion card
+      const hasFoodLogData = foodLogStats.calories > 0 || 
+                             foodLogStats.protein > 0 || 
+                             foodLogStats.fat > 0 || 
+                             foodLogStats.carbs > 0;
+      
+      const combinedStats = hasFoodLogData
+        ? foodLogStats // Đã ăn thực tế, dùng FoodLog
+        : mealPlanStats; // Chưa ăn, dùng MealPlan để match với suggestion
+      
+      setTodayStats(combinedStats);
     } catch (error) {
       console.error("Error fetching today stats:", error);
       setTodayStats({ calories: 0, protein: 0, fat: 0, carbs: 0 });
@@ -368,12 +400,18 @@ export default function HomeScreen({ navigation }: any) {
     }
   }, [token]);
 
-  // Reload preferences when screen is focused (e.g., after updating in NutritionGoalsScreen)
+  // Reload data when screen is focused (e.g., after updating in NutritionGoalsScreen or accepting meal plan)
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       if (token) {
-        fetchUserPreferences();
-        fetchTodayStats(); // Also refresh stats to update progress bars
+        // Refresh all data when screen is focused to ensure consistency
+        Promise.all([
+          fetchTodaySuggest(),
+          fetchTodayStats(),
+          fetchUserPreferences(),
+        ]).catch((error) => {
+          console.error("Error refreshing data on focus:", error);
+        });
       }
     });
 
