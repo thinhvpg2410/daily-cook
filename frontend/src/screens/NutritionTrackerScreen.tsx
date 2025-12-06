@@ -29,6 +29,8 @@ import {
 import { searchRecipesApi, Recipe } from "../api/recipes";
 import { getPreferencesApi } from "../api/users";
 import { getDailyNutritionApi, getMealPlansApi } from "../api/mealplan";
+import { generateNutritionTips, GenerateNutritionTipsResponse } from "../api/ai";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const PLACEHOLDER_IMG =
   "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?q=80&w=1200&auto=format&fit=crop";
@@ -64,6 +66,9 @@ export default function NutritionTracker({ navigation }: any) {
       dinner: any[];
     };
   } | null>(null);
+  const [aiTips, setAiTips] = useState<GenerateNutritionTipsResponse | null>(null);
+  const [generatingTips, setGeneratingTips] = useState(false);
+  const [tipsWeekKey, setTipsWeekKey] = useState<string>("");
 
   const formatDate = (date: Date): string => {
     const year = date.getFullYear();
@@ -302,6 +307,9 @@ export default function NutritionTracker({ navigation }: any) {
           loadFoodLogs(),
           loadPlanNutrition(),
         ]);
+        
+        // Load tips từ storage
+        await loadTipsFromStorage();
       } catch (error) {
         console.error("Error initializing nutrition tracker:", error);
       } finally {
@@ -311,6 +319,18 @@ export default function NutritionTracker({ navigation }: any) {
     
     initialize();
   }, []);
+
+  // Tự động gen tips khi stats thay đổi và qua tuần mới
+  useEffect(() => {
+    if (!stats || history.length === 0) return;
+    
+    const currentWeekKey = getWeekKey();
+    
+    // Nếu qua tuần mới hoặc chưa có tips, tự động gen
+    if (!tipsWeekKey || tipsWeekKey !== currentWeekKey) {
+      generateAITips(false);
+    }
+  }, [stats]);
 
   // Reload preferences when screen is focused (e.g., after updating in NutritionGoalsScreen)
   useEffect(() => {
@@ -329,17 +349,23 @@ export default function NutritionTracker({ navigation }: any) {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const onRefresh = () => {
+  const onRefresh = async () => {
     setRefreshing(true);
     const date = selectedDate || undefined;
-    Promise.all([
-      loadUserPreferences(),
-      loadStats(),
-      loadFoodLogs(date),
-      loadPlanNutrition(date),
-    ]).finally(() => {
+    try {
+      await Promise.all([
+        loadUserPreferences(),
+        loadStats(),
+        loadFoodLogs(date),
+        loadPlanNutrition(date),
+      ]);
+      // Sau khi load stats xong, gen tips mới nếu cần
+      if (stats && history.length > 0) {
+        await generateAITips(true);
+      }
+    } finally {
       setRefreshing(false);
-    });
+    }
   };
 
   const handleAddFoodLog = async (recipeId?: string, manualData?: Partial<CreateFoodLogData>) => {
@@ -429,72 +455,98 @@ export default function NutritionTracker({ navigation }: any) {
     return { label: "Vừa", color: "#51cf66", icon: "remove-outline" };
   };
 
-  // DailyCook Tips - Logic thông minh hơn
-  const getDailyCookTips = (): string[] => {
-  const tips: string[] = [];
-    
-    // Tips về calories
-    if (avg.calories > calorieTarget * 1.1) {
-      tips.push("⚠️ Bạn đang hấp thụ nhiều calo trung bình. Hãy giảm khẩu phần ăn hoặc tăng cường vận động để cân bằng.");
-      tips.push("💡 Mẹo: Chọn các món luộc, hấp thay vì chiên xào để giảm calo mà vẫn đảm bảo dinh dưỡng.");
-    } else if (avg.calories < calorieTarget * 0.85) {
-      tips.push("📉 Calo trung bình hơi thấp. Hãy thêm bữa phụ lành mạnh hoặc tăng khẩu phần để đạt mục tiêu.");
-      tips.push("🥑 Mẹo: Bổ sung các thực phẩm giàu năng lượng như quả bơ, các loại hạt, sữa chua để tăng calo lành mạnh.");
-    }
-    
-    // Tips về protein
-    if (avg.protein < 80) {
-      tips.push("🥩 Protein hơi thấp. Hãy bổ sung thêm trứng, cá, thịt nạc, đậu hũ, sữa để tăng cơ bắp và sức khỏe.");
-      tips.push("💪 Mục tiêu: Phụ nữ cần ~46-50g protein/ngày, nam giới cần ~56-65g protein/ngày.");
-    } else if (avg.protein > 150) {
-      tips.push("⚖️ Protein quá cao có thể gây quá tải cho thận. Hãy cân bằng với carbs và chất béo lành mạnh.");
-    }
-    
-    // Tips về carbs
-    if (avg.carbs < 100) {
-      tips.push("🍞 Carbs hơi thấp. Carbs là nguồn năng lượng chính, hãy bổ sung gạo lứt, khoai lang, bánh mì nguyên cám.");
-    } else if (avg.carbs > 400) {
-      tips.push("🍚 Carbs quá cao. Hãy chọn carbs phức hợp (gạo lứt, yến mạch) thay vì carbs đơn giản (bánh kẹo, đồ ngọt).");
-    }
-    
-    // Tips về fat
-    if (avg.fat < 40) {
-      tips.push("🥑 Chất béo hơi thấp. Chất béo tốt cần thiết cho não và hormone. Hãy bổ sung quả bơ, cá béo, dầu olive.");
-    } else if (avg.fat > 100) {
-      tips.push("⚖️ Chất béo quá cao. Ưu tiên chất béo không bão hòa (cá, quả bơ, hạt) và hạn chế chất béo bão hòa (đồ chiên, mỡ động vật).");
-    }
-    
-    // Tips về sự đều đặn
-    if (history.length > 0) {
-      const caloriesDiff = Math.max(...history.map(d => d.calories)) - Math.min(...history.map(d => d.calories));
-      if (caloriesDiff > calorieTarget * 0.5) {
-        tips.push("📊 Lượng calo giữa các ngày dao động nhiều. Hãy cố gắng duy trì chế độ ăn đều đặn để cơ thể hấp thu tốt hơn.");
-      }
-    }
-    
-    // Tips tích cực
-    if (tips.length === 0 || (avg.calories >= calorieTarget * 0.9 && avg.calories <= calorieTarget * 1.1)) {
-      tips.push("🎉 Chế độ ăn của bạn khá cân bằng trong tuần này! Tiếp tục duy trì nhé!");
-      tips.push("💚 Mẹo: Uống đủ nước (2-2.5L/ngày) và ăn nhiều rau xanh để bổ sung vitamin và khoáng chất.");
-      tips.push("⏰ Nhớ ăn đúng bữa, không bỏ bữa sáng và ăn tối trước 8h tối để có giấc ngủ ngon hơn.");
-    }
-    
-    // Tips dinh dưỡng tổng quát
-    tips.push("🥗 Hãy đa dạng hóa thực đơn với nhiều loại thực phẩm khác nhau để đảm bảo đủ vitamin và khoáng chất.");
-    tips.push("🍽️ Nhai kỹ, ăn chậm giúp tiêu hóa tốt hơn và giảm cảm giác đói, từ đó kiểm soát calo hiệu quả hơn.");
-    
-    // Tips theo mùa/tuần
-    const dayOfWeek = new Date().getDay();
-    if (dayOfWeek === 1) { // Thứ 2
-      tips.push("💪 Đầu tuần mới, hãy lên kế hoạch thực đơn cho cả tuần để ăn uống lành mạnh và tiết kiệm thời gian!");
-    } else if (dayOfWeek === 6 || dayOfWeek === 0) { // Cuối tuần
-      tips.push("🏋️ Cuối tuần là cơ hội để thử các món mới và chuẩn bị meal prep cho tuần tới!");
-    }
-    
-    return tips.slice(0, 5); // Giới hạn 5 tips để không quá dài
+  // Tính toán week key để check xem đã gen tips cho tuần này chưa
+  const getWeekKey = (): string => {
+    const today = new Date();
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - today.getDay() + 1); // Thứ 2
+    startOfWeek.setHours(0, 0, 0, 0);
+    return formatDate(startOfWeek);
   };
-  
-  const tips = getDailyCookTips();
+
+  // Load tips từ storage
+  const loadTipsFromStorage = async () => {
+    try {
+      const currentWeekKey = getWeekKey();
+      const storedWeekKey = await AsyncStorage.getItem("nutritionTipsWeekKey");
+      const storedTips = await AsyncStorage.getItem("nutritionTips");
+      
+      if (storedWeekKey === currentWeekKey && storedTips) {
+        const parsed = JSON.parse(storedTips);
+        setAiTips(parsed);
+        setTipsWeekKey(currentWeekKey);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("Error loading tips from storage:", error);
+      return false;
+    }
+  };
+
+  // Gen tips từ AI
+  const generateAITips = async (forceRefresh: boolean = false) => {
+    if (!stats || history.length === 0) {
+      console.log("No stats available for tips generation");
+      return;
+    }
+
+    const currentWeekKey = getWeekKey();
+    
+    // Nếu không phải force refresh và đã có tips cho tuần này, không gen lại
+    if (!forceRefresh && tipsWeekKey === currentWeekKey && aiTips) {
+      return;
+    }
+
+    setGeneratingTips(true);
+    try {
+      // Tính toán week start và end
+      const today = new Date();
+      const startOfWeek = new Date(today);
+      startOfWeek.setDate(today.getDate() - today.getDay() + 1); // Thứ 2
+      startOfWeek.setHours(0, 0, 0, 0);
+      
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 6);
+      endOfWeek.setHours(23, 59, 59, 999);
+
+      const weekStart = formatDate(startOfWeek);
+      const weekEnd = formatDate(endOfWeek);
+
+      const tipsData = await generateNutritionTips({
+        daily: history.map((d) => ({
+          date: d.date,
+          calories: d.calories,
+          protein: d.protein,
+          fat: d.fat,
+          carbs: d.carbs,
+          source: (d as any).source,
+        })),
+        average: avg,
+        calorieTarget,
+        weekStart,
+        weekEnd,
+      });
+
+      setAiTips(tipsData);
+      setTipsWeekKey(currentWeekKey);
+
+      // Lưu vào storage
+      await AsyncStorage.setItem("nutritionTipsWeekKey", currentWeekKey);
+      await AsyncStorage.setItem("nutritionTips", JSON.stringify(tipsData));
+    } catch (error: any) {
+      console.error("Error generating AI tips:", error);
+      // Fallback to empty tips
+      setAiTips({
+        tips: ["💡 Đang tải tips dinh dưỡng..."],
+        summary: "Đang phân tích dữ liệu dinh dưỡng của bạn",
+        week: "7 ngày qua",
+        generatedAt: new Date().toISOString(),
+      });
+    } finally {
+      setGeneratingTips(false);
+    }
+  };
 
   const formatDateDisplay = (dateStr: string) => {
     try {
@@ -783,35 +835,55 @@ export default function NutritionTracker({ navigation }: any) {
           )}
         </View>
 
-        {/* DailyCook Tips */}
+        {/* DailyCook Tips - AI Generated */}
         <View style={s.tipBox}>
           <View style={s.tipHeader}>
             <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
               <Ionicons name="sparkles-outline" size={24} color="#f77" style={{ marginRight: 8 }} />
-            <Text style={s.tipTitle}>DailyCook Tips</Text>
+              <View>
+                <Text style={s.tipTitle}>DailyCook Tips</Text>
+                {aiTips?.summary && (
+                  <Text style={{ fontSize: 11, color: "#888", marginTop: 2 }}>
+                    {aiTips.summary}
+                  </Text>
+                )}
+              </View>
             </View>
             <TouchableOpacity
-              onPress={async () => {
-                // Refresh tips bằng cách reload stats
-                await loadStats();
-              }}
+              onPress={() => generateAITips(true)}
               style={s.tipRefreshButton}
+              disabled={generatingTips}
             >
-              <Ionicons name="refresh-outline" size={18} color="#f77" />
+              {generatingTips ? (
+                <ActivityIndicator size="small" color="#f77" />
+              ) : (
+                <Ionicons name="refresh-outline" size={18} color="#f77" />
+              )}
             </TouchableOpacity>
           </View>
-          <View style={s.tipsList}>
-            {tips.map((tip, i) => (
-              <View key={i} style={s.tipItem}>
-                <Ionicons name="checkmark-circle" size={16} color="#51cf66" style={{ marginRight: 8, marginTop: 2 }} />
-                <Text style={s.tipText}>{tip}</Text>
+          {generatingTips && !aiTips ? (
+            <View style={{ padding: 20, alignItems: "center" }}>
+              <ActivityIndicator size="small" color="#f77" />
+              <Text style={{ marginTop: 8, color: "#666", fontSize: 12 }}>
+                Đang tạo tips dinh dưỡng...
+              </Text>
+            </View>
+          ) : (
+            <>
+              <View style={s.tipsList}>
+                {(aiTips?.tips || []).map((tip, i) => (
+                  <View key={i} style={s.tipItem}>
+                    <Ionicons name="checkmark-circle" size={16} color="#51cf66" style={{ marginRight: 8, marginTop: 2 }} />
+                    <Text style={s.tipText}>{tip}</Text>
+                  </View>
+                ))}
               </View>
-            ))}
-          </View>
-          {tips.length > 0 && (
-            <Text style={s.tipFooter}>
-              💡 Tips được tạo dựa trên thói quen dinh dưỡng của bạn trong 7 ngày qua
-            </Text>
+              {aiTips && (
+                <Text style={s.tipFooter}>
+                  💡 Tips được gen bằng AI dựa trên dữ liệu dinh dưỡng của bạn trong {aiTips.week}
+                </Text>
+              )}
+            </>
           )}
         </View>
       </ScrollView>

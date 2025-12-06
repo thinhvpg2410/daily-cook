@@ -86,3 +86,40 @@ export const calculateCalorieGoal = async (
   return res.data;
 };
 
+/**
+ * Gen nutrition tips bằng AI dựa trên dữ liệu dinh dưỡng
+ */
+export interface GenerateNutritionTipsParams {
+  daily: Array<{
+    date: string;
+    calories: number;
+    protein: number;
+    fat: number;
+    carbs: number;
+    source?: string;
+  }>;
+  average: {
+    calories: number;
+    protein: number;
+    fat: number;
+    carbs: number;
+  };
+  calorieTarget: number;
+  weekStart?: string;
+  weekEnd?: string;
+}
+
+export interface GenerateNutritionTipsResponse {
+  tips: string[];
+  summary: string;
+  week: string;
+  generatedAt: string;
+}
+
+export const generateNutritionTips = async (
+  params: GenerateNutritionTipsParams
+): Promise<GenerateNutritionTipsResponse> => {
+  const res = await http.post<GenerateNutritionTipsResponse>("/ai/generate-nutrition-tips", params);
+  return res.data;
+};
+

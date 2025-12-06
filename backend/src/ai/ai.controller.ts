@@ -5,6 +5,7 @@ import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { CurrentUser } from "../common/decorators/user.decorator";
 import { ChatMessageDto, SuggestFromChatDto } from "./dto/chat.dto";
 import { CalculateCalorieGoalDto } from "./dto/calculate-calorie-goal.dto";
+import { GenerateNutritionTipsDto } from "./dto/generate-nutrition-tips.dto";
 
 @ApiTags("AI")
 @UseGuards(JwtAuthGuard)
@@ -63,6 +64,16 @@ export class AIController {
       dto.activity,
       dto.goal,
     );
+  }
+
+  @Post("generate-nutrition-tips")
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({ summary: "Gen nutrition tips bằng AI dựa trên dữ liệu dinh dưỡng" })
+  @ApiResponse({ status: 200, description: "Danh sách tips dinh dưỡng được gen" })
+  @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
+  @ApiResponse({ status: 400, description: "Lỗi AI service hoặc dữ liệu không hợp lệ" })
+  async generateNutritionTips(@CurrentUser() user: any, @Body() dto: GenerateNutritionTipsDto) {
+    return this.aiService.generateNutritionTips(user.userId, dto);
   }
 }
 

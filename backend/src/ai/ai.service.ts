@@ -95,7 +95,12 @@ Chỉ trả về JSON array hợp lệ.`;
 
     const map: Record<
       string,
-      { pricePerUnit: number; currency?: string; source?: string; unit?: string }
+      {
+        pricePerUnit: number;
+        currency?: string;
+        source?: string;
+        unit?: string;
+      }
     > = {};
     for (const entry of parsed) {
       if (!entry?.name || typeof entry.pricePerUnit !== "number") continue;
@@ -150,9 +155,7 @@ Chỉ trả về JSON array hợp lệ.`;
         where: { userId },
         orderBy: { date: "desc" },
         take: 5,
-        include: {
-          // Note: Prisma không support include với JSON field, nên ta sẽ query riêng
-        },
+        include: {},
       });
 
       // Build context cho AI
@@ -351,7 +354,8 @@ CHỈ TRẢ VỀ JSON, KHÔNG CÓ TEXT HAY MARKDOWN KHÁC.`;
         // Fallback to default
         parsedData = {
           needsClarification: true,
-          clarificationQuestion: "Tôi cần thêm thông tin để gợi ý phù hợp. Bạn muốn món cho buổi nào và số lượng bao nhiêu món?",
+          clarificationQuestion:
+            "Tôi cần thêm thông tin để gợi ý phù hợp. Bạn muốn món cho buổi nào và số lượng bao nhiêu món?",
         };
       }
 
@@ -371,8 +375,7 @@ CHỈ TRẢ VỀ JSON, KHÔNG CÓ TEXT HAY MARKDOWN KHÁC.`;
 
       // Xác định vegetarian từ dietMode
       const vegetarian =
-        parsedData.dietMode === "vegan" ||
-        parsedData.dietMode === "vegetarian";
+        parsedData.dietMode === "vegan" || parsedData.dietMode === "vegetarian";
 
       // Xác định chế độ ăn: eat_clean và diet cần filter calories
       const isDietMode = parsedData.dietMode === "diet";
@@ -385,14 +388,17 @@ CHỈ TRẢ VỀ JSON, KHÔNG CÓ TEXT HAY MARKDOWN KHÁC.`;
         {
           date: targetDate,
           slot: parsedData.slot || "all",
-          region: parsedData.region || (userContext.likedTags.find((t: string) =>
-            ["Northern", "Central", "Southern"].includes(t)
-          ) as "Northern" | "Central" | "Southern" | undefined),
+          region:
+            parsedData.region ||
+            (userContext.likedTags.find((t: string) =>
+              ["Northern", "Central", "Southern"].includes(t),
+            ) as "Northern" | "Central" | "Southern" | undefined),
           vegetarian,
           maxCookTime: parsedData.maxCookTime,
           includeStarter: parsedData.includeStarter || false,
           includeDessert: parsedData.includeDessert || false,
-          excludeIngredientNames: parsedData.excludeIngredients?.join(",") || "",
+          excludeIngredientNames:
+            parsedData.excludeIngredients?.join(",") || "",
           persist: false, // Chỉ suggest, không lưu
         },
         parsedData.recipeCount, // Pass recipe count
@@ -504,10 +510,10 @@ Chỉ trả về JSON, không có text khác.`;
 
         if (goal === "lose_weight") {
           proteinPercent = 0.35;
-          carbsPercent = 0.40;
+          carbsPercent = 0.4;
         } else if (goal === "gain_muscle") {
           proteinPercent = 0.35;
-          fatPercent = 0.20;
+          fatPercent = 0.2;
         }
 
         const protein = Math.round((calorieTarget * proteinPercent) / 4);
@@ -524,7 +530,10 @@ Chỉ trả về JSON, không có text khác.`;
       }
 
       // Validate và đảm bảo giá trị hợp lý
-      const finalTarget = Math.max(1200, Math.min(4000, Math.round(aiResult.dailyKcalTarget || calorieTarget)));
+      const finalTarget = Math.max(
+        1200,
+        Math.min(4000, Math.round(aiResult.dailyKcalTarget || calorieTarget)),
+      );
       const finalProtein = Math.max(50, Math.round(aiResult.protein || 150));
       const finalFat = Math.max(30, Math.round(aiResult.fat || 50));
       const finalCarbs = Math.max(100, Math.round(aiResult.carbs || 200));
@@ -536,12 +545,164 @@ Chỉ trả về JSON, không có text khác.`;
         protein: finalProtein,
         fat: finalFat,
         carbs: finalCarbs,
-        explanation: aiResult.explanation || "Đã tính toán mục tiêu dinh dưỡng phù hợp với bạn.",
+        explanation:
+          aiResult.explanation ||
+          "Đã tính toán mục tiêu dinh dưỡng phù hợp với bạn.",
       };
     } catch (error: any) {
       console.error("Error in AI calorie calculation:", error);
       throw new BadRequestException(
         `AI calculation error: ${error.message || "Unknown error"}. Please check your API key and ensure gemini-2.0-flash is available.`,
+      );
+    }
+  }
+
+  /**
+   * Gen nutrition tips dựa trên dữ liệu dinh dưỡng của user
+   */
+  async generateNutritionTips(
+    userId: string,
+    nutritionData: {
+      daily: Array<{
+        date: string;
+        calories: number;
+        protein: number;
+        fat: number;
+        carbs: number;
+        source?: string;
+      }>;
+      average: {
+        calories: number;
+        protein: number;
+        fat: number;
+        carbs: number;
+      };
+      calorieTarget: number;
+      weekStart?: string;
+      weekEnd?: string;
+    },
+  ) {
+    if (!this.model) {
+      throw new BadRequestException("AI service is not configured.");
+    }
+
+    try {
+      // Lấy user preferences
+      const preferences = await this.prisma.userPreference.findUnique({
+        where: { userId },
+      });
+
+      // Tính toán các metrics quan trọng
+      const avgCalories = nutritionData.average.calories;
+      const avgProtein = nutritionData.average.protein;
+      const avgFat = nutritionData.average.fat;
+      const avgCarbs = nutritionData.average.carbs;
+      const calorieTarget = nutritionData.calorieTarget;
+
+      // Tính toán độ dao động
+      const calories = nutritionData.daily.map((d) => d.calories);
+      const caloriesVariation = Math.max(...calories) - Math.min(...calories);
+      const caloriesConsistency = caloriesVariation / calorieTarget;
+
+      // Tính toán tỷ lệ macros
+      const proteinPercent = (avgProtein * 4) / avgCalories;
+      const fatPercent = (avgFat * 9) / avgCalories;
+      const carbsPercent = (avgCarbs * 4) / avgCalories;
+
+      // Build prompt cho AI
+      const prompt = `Bạn là chuyên gia dinh dưỡng và huấn luyện viên sức khỏe chuyên nghiệp tại Việt Nam. Dựa trên dữ liệu dinh dưỡng của người dùng trong ${nutritionData.weekStart ? `tuần từ ${nutritionData.weekStart} đến ${nutritionData.weekEnd}` : "7 ngày qua"}, hãy phân tích và đưa ra 5-7 tips dinh dưỡng cá nhân hóa, thực tế và hữu ích.
+
+DỮ LIỆU DINH DƯỠNG:
+- Calo trung bình/ngày: ${avgCalories} kcal (Mục tiêu: ${calorieTarget} kcal)
+- Protein trung bình: ${Math.round(avgProtein)}g (${Math.round(proteinPercent * 100)}% tổng calo)
+- Fat trung bình: ${Math.round(avgFat)}g (${Math.round(fatPercent * 100)}% tổng calo)
+- Carbs trung bình: ${Math.round(avgCarbs)}g (${Math.round(carbsPercent * 100)}% tổng calo)
+- Độ dao động calo: ${Math.round(caloriesVariation)} kcal (${Math.round(caloriesConsistency * 100)}% so với mục tiêu)
+
+THÔNG TIN NGƯỜI DÙNG:
+- Mục tiêu: ${preferences?.goal === "lose_weight" ? "Giảm cân" : preferences?.goal === "gain_muscle" ? "Tăng cơ" : "Duy trì"}
+- Chế độ ăn: ${preferences?.dietType || "bình thường"}
+- Mục tiêu calo/ngày: ${calorieTarget} kcal
+
+CHI TIẾT TỪNG NGÀY:
+${nutritionData.daily
+  .map(
+    (d) =>
+      `- ${d.date}: ${Math.round(d.calories)} kcal (P: ${Math.round(d.protein)}g, C: ${Math.round(d.carbs)}g, F: ${Math.round(d.fat)}g)`,
+  )
+  .join("\n")}
+
+YÊU CẦU:
+1. Phân tích điểm mạnh và điểm cần cải thiện trong chế độ ăn
+2. Đưa ra 5-7 tips cụ thể, thực tế, dễ áp dụng
+3. Tips phải phù hợp với mục tiêu và chế độ ăn của người dùng
+4. Ưu tiên tips về:
+   - Cân bằng macros (protein/carbs/fat)
+   - Điều chỉnh calo nếu cần
+   - Cải thiện tính nhất quán trong ăn uống
+   - Thực phẩm cụ thể phù hợp với người Việt
+   - Thời gian ăn uống và thói quen tốt
+5. Mỗi tip ngắn gọn (1-2 câu), dễ hiểu, có emoji phù hợp
+6. Tips phải tích cực, khuyến khích, không chỉ trích
+
+TRẢ VỀ JSON với format:
+{
+  "tips": string[],  // Mảng các tips (5-7 tips)
+  "summary": string,  // Tóm tắt ngắn gọn về tình trạng dinh dưỡng (1-2 câu)
+  "week": string      // Tuần được phân tích (ví dụ: "Tuần từ 15/01 đến 21/01")
+}
+
+CHỈ TRẢ VỀ JSON, KHÔNG CÓ TEXT HAY MARKDOWN KHÁC.`;
+
+      const result = await this.model.generateContent(prompt);
+      const responseText = result.response.text();
+
+      // Extract JSON from response
+      let aiResult: any;
+      try {
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          aiResult = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error("No JSON found in AI response");
+        }
+      } catch (e) {
+        console.error("Error parsing AI tips response:", e);
+        console.error("Raw AI response:", responseText);
+        // Fallback to default tips
+        aiResult = {
+          tips: [
+            "💡 Hãy duy trì chế độ ăn đều đặn và cân bằng dinh dưỡng",
+            "🥗 Bổ sung nhiều rau xanh và trái cây để tăng cường vitamin",
+            "💪 Đảm bảo đủ protein để duy trì cơ bắp và sức khỏe",
+            "⏰ Ăn đúng bữa và không bỏ bữa sáng",
+            "💧 Uống đủ nước (2-2.5L/ngày) để hỗ trợ trao đổi chất",
+          ],
+          summary: "Chế độ ăn của bạn đang ổn định. Tiếp tục duy trì nhé!",
+          week: nutritionData.weekStart
+            ? `Tuần từ ${nutritionData.weekStart} đến ${nutritionData.weekEnd}`
+            : "7 ngày qua",
+        };
+      }
+
+      // Validate và đảm bảo có đủ tips
+      if (!Array.isArray(aiResult.tips) || aiResult.tips.length === 0) {
+        aiResult.tips = [
+          "💡 Hãy duy trì chế độ ăn đều đặn và cân bằng dinh dưỡng",
+          "🥗 Bổ sung nhiều rau xanh và trái cây để tăng cường vitamin",
+        ];
+      }
+
+      return {
+        tips: aiResult.tips.slice(0, 7), // Giới hạn tối đa 7 tips
+        summary: aiResult.summary || "Phân tích dinh dưỡng của bạn",
+        week: aiResult.week || (nutritionData.weekStart ? `Tuần từ ${nutritionData.weekStart} đến ${nutritionData.weekEnd}` : "7 ngày qua"),
+        generatedAt: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      console.error("Error generating nutrition tips:", error);
+      throw new BadRequestException(
+        `AI tips generation error: ${error.message || "Unknown error"}. Please check your API key and ensure gemini-2.0-flash is available.`,
       );
     }
   }
