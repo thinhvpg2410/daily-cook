@@ -39,8 +39,8 @@ RUN apk add --no-cache openssl libc6-compat
 # Copy package files
 COPY backend/package*.json ./
 
-# Cài đặt chỉ production dependencies
-RUN npm ci --only=production --legacy-peer-deps && npm cache clean --force
+# Cài đặt chỉ production dependencies (ignore scripts để tránh gọi nest)
+RUN npm ci --only=production --legacy-peer-deps --ignore-scripts && npm cache clean --force
 
 # Copy Prisma files từ builder
 COPY --from=builder /app/prisma ./prisma
