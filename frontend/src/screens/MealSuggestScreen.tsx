@@ -393,40 +393,14 @@ export default function MealSuggestScreen({ navigation }: any) {
         finalDinnerIds = lunchIds.slice(-2);
       }
 
-      // Get or create meal plan
-      let mealPlanId: string;
-      try {
-        const plansRes = await getMealPlansApi({
-          start: selectedDate,
-          end: selectedDate,
-        });
-        const plans = plansRes.data || [];
-        const existingPlan = plans.find((p: any) => {
-          const planDate = typeof p.date === 'string' 
-            ? p.date.split('T')[0] 
-            : new Date(p.date).toISOString().split('T')[0];
-          return planDate === selectedDate;
-        });
-
-        if (existingPlan) {
-          mealPlanId = existingPlan.id;
-        } else {
-          const createRes = await upsertMealPlanApi({
-            date: selectedDate,
-            slots: { breakfast: [], lunch: [], dinner: [] },
-          });
-          mealPlanId = createRes.data.id;
-        }
-      } catch (error) {
-        const createRes = await upsertMealPlanApi({
-          date: selectedDate,
-          slots: { breakfast: [], lunch: [], dinner: [] },
-        });
-        mealPlanId = createRes.data.id;
-      }
-
       // Update meal plan with distributed recipes
-      await upsertMealPlanApi({
+      // upsertMealPlanApi will create or update the meal plan
+      console.log({
+        breakfast: breakfastIds,
+          lunch: finalLunchIds,
+          dinner: finalDinnerIds,
+      })
+      const result = await upsertMealPlanApi({
         date: selectedDate,
         slots: {
           breakfast: breakfastIds,
@@ -435,6 +409,16 @@ export default function MealSuggestScreen({ navigation }: any) {
         },
       });
 
+      // Verify the operation succeeded
+      if (!result.data || !result.data.id) {
+        throw new Error("Không thể tạo/cập nhật meal plan");
+      }
+
+      // Close modal and clear suggestions
+      setShowSuggestionModal(false);
+      setRecipes([]);
+      setSuggestionData(null);
+
       Alert.alert(
         "Thành công! ✅",
         `Đã thêm ${recipes.length} món ăn vào lịch ngày ${selectedDate}!\n\n- Bữa sáng: ${breakfastIds.length} món\n- Bữa trưa: ${finalLunchIds.length} món\n- Bữa tối: ${finalDinnerIds.length} món`,
@@ -442,28 +426,30 @@ export default function MealSuggestScreen({ navigation }: any) {
           {
             text: "Xem lịch",
             onPress: () => {
-              // Clear suggestions before navigating
-              setRecipes([]);
-              setSuggestionData(null);
+              // Navigate to Calendar with refresh params
+              // Use timestamp to ensure refresh triggers even if already on Calendar screen
               navigation.navigate("Calendar", { 
+                selectedDate: selectedDate,
                 refreshDate: selectedDate,
-                refresh: true 
+                refresh: true,
+                refreshTimestamp: Date.now()
               });
             },
           },
           { 
             text: "OK",
             onPress: () => {
-              // Clear suggestions after accepting
-              setRecipes([]);
-              setSuggestionData(null);
+              // Just close, suggestions already cleared
             }
           },
         ]
       );
     } catch (error: any) {
       console.error("Error accepting suggestions:", error);
-      Alert.alert("Lỗi", error?.response?.data?.message || "Không thể thêm món vào lịch. Vui lòng thử lại!");
+      Alert.alert(
+        "Lỗi", 
+        error?.response?.data?.message || error?.message || "Không thể thêm món vào lịch. Vui lòng thử lại!"
+      );
     } finally {
       setAccepting(false);
     }
@@ -1118,7 +1104,6 @@ export default function MealSuggestScreen({ navigation }: any) {
             <TouchableOpacity
               style={[styles.acceptButton, accepting && styles.acceptButtonDisabled]}
               onPress={async () => {
-                setShowSuggestionModal(false);
                 await handleAcceptSuggestions();
               }}
               disabled={accepting}

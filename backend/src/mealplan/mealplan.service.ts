@@ -251,6 +251,9 @@ export class MealPlanService {
   }
 
   async upsert(userId: string, dto: CreateMealPlanDto) {
+    console.log({
+      dto,
+    })
     const date = this.asDate(dto.date);
     const exists = await this.prisma.mealPlan.findFirst({
       where: { userId, date },
@@ -263,6 +266,10 @@ export class MealPlanService {
       ...(slots.lunch ?? []),
       ...(slots.dinner ?? []),
     ];
+
+    console.log({
+      recipeIds,
+    })
     if (recipeIds.length > 0) {
       const uniqueIds = [...new Set(recipeIds)]; // Remove duplicates
       const cnt = await this.prisma.recipe.count({

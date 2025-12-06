@@ -1,4 +1,4 @@
-import { IsDateString, IsOptional } from "class-validator";
+import { IsDateString, IsOptional, IsObject, IsNotEmpty } from "class-validator";
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateMealPlanDto {
@@ -11,6 +11,8 @@ export class CreateMealPlanDto {
     example: { breakfast: ['recipe-id-1'], lunch: ['recipe-id-2'], dinner: ['recipe-id-3'] },
     type: Object
   })
+  @IsObject()
+  @IsNotEmpty()
   slots: Record<string, string[]>;
   
   @ApiProperty({ description: 'Ghi chú', example: 'Kế hoạch bữa ăn tuần này', required: false })
