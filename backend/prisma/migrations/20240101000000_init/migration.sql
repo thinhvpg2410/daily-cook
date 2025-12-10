@@ -1,8 +1,12 @@
--- CreateEnum
-CREATE TYPE "Role" AS ENUM ('USER', 'ADMIN');
+-- CreateEnum (idempotent)
+DO $$ BEGIN
+    CREATE TYPE "Role" AS ENUM ('USER', 'ADMIN');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateTable
-CREATE TABLE "User" (
+CREATE TABLE IF NOT EXISTS "User" (
     "id" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "passwordHash" TEXT,
@@ -21,7 +25,7 @@ CREATE TABLE "User" (
 );
 
 -- CreateTable
-CREATE TABLE "UserPreference" (
+CREATE TABLE IF NOT EXISTS "UserPreference" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "gender" TEXT,
@@ -40,7 +44,7 @@ CREATE TABLE "UserPreference" (
 );
 
 -- CreateTable
-CREATE TABLE "Ingredient" (
+CREATE TABLE IF NOT EXISTS "Ingredient" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "unit" TEXT,
@@ -58,7 +62,7 @@ CREATE TABLE "Ingredient" (
 );
 
 -- CreateTable
-CREATE TABLE "Recipe" (
+CREATE TABLE IF NOT EXISTS "Recipe" (
     "id" TEXT NOT NULL,
     "title" TEXT NOT NULL,
     "description" TEXT,
@@ -80,7 +84,7 @@ CREATE TABLE "Recipe" (
 );
 
 -- CreateTable
-CREATE TABLE "RecipeItem" (
+CREATE TABLE IF NOT EXISTS "RecipeItem" (
     "id" TEXT NOT NULL,
     "recipeId" TEXT NOT NULL,
     "ingredientId" TEXT NOT NULL,
@@ -92,7 +96,7 @@ CREATE TABLE "RecipeItem" (
 );
 
 -- CreateTable
-CREATE TABLE "MealPlan" (
+CREATE TABLE IF NOT EXISTS "MealPlan" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "date" TIMESTAMP(3) NOT NULL,
@@ -106,7 +110,7 @@ CREATE TABLE "MealPlan" (
 );
 
 -- CreateTable
-CREATE TABLE "ShoppingList" (
+CREATE TABLE IF NOT EXISTS "ShoppingList" (
     "id" TEXT NOT NULL,
     "title" TEXT NOT NULL DEFAULT 'Shopping List',
     "userId" TEXT NOT NULL,
@@ -121,7 +125,7 @@ CREATE TABLE "ShoppingList" (
 );
 
 -- CreateTable
-CREATE TABLE "FoodLog" (
+CREATE TABLE IF NOT EXISTS "FoodLog" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "date" TIMESTAMP(3) NOT NULL,
@@ -139,7 +143,7 @@ CREATE TABLE "FoodLog" (
 );
 
 -- CreateTable
-CREATE TABLE "AIRecommendationLog" (
+CREATE TABLE IF NOT EXISTS "AIRecommendationLog" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "input" JSONB NOT NULL,
@@ -153,7 +157,7 @@ CREATE TABLE "AIRecommendationLog" (
 );
 
 -- CreateTable
-CREATE TABLE "UserFavoriteRecipe" (
+CREATE TABLE IF NOT EXISTS "UserFavoriteRecipe" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "recipeId" TEXT NOT NULL,
@@ -162,113 +166,147 @@ CREATE TABLE "UserFavoriteRecipe" (
     CONSTRAINT "UserFavoriteRecipe_pkey" PRIMARY KEY ("id")
 );
 
--- CreateIndex
-CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
+-- CreateIndex (idempotent)
+CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "User_phone_key" ON "User"("phone");
+CREATE UNIQUE INDEX IF NOT EXISTS "User_phone_key" ON "User"("phone");
 
 -- CreateIndex
-CREATE INDEX "User_createdAt_idx" ON "User"("createdAt");
+CREATE INDEX IF NOT EXISTS "User_createdAt_idx" ON "User"("createdAt");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "UserPreference_userId_key" ON "UserPreference"("userId");
+CREATE UNIQUE INDEX IF NOT EXISTS "UserPreference_userId_key" ON "UserPreference"("userId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Ingredient_name_key" ON "Ingredient"("name");
+CREATE UNIQUE INDEX IF NOT EXISTS "Ingredient_name_key" ON "Ingredient"("name");
 
 -- CreateIndex
-CREATE INDEX "Ingredient_name_idx" ON "Ingredient"("name");
+CREATE INDEX IF NOT EXISTS "Ingredient_name_idx" ON "Ingredient"("name");
 
 -- CreateIndex
-CREATE INDEX "Recipe_createdAt_idx" ON "Recipe"("createdAt");
+CREATE INDEX IF NOT EXISTS "Recipe_createdAt_idx" ON "Recipe"("createdAt");
 
 -- CreateIndex
-CREATE INDEX "Recipe_cookTime_idx" ON "Recipe"("cookTime");
+CREATE INDEX IF NOT EXISTS "Recipe_cookTime_idx" ON "Recipe"("cookTime");
 
 -- CreateIndex
-CREATE INDEX "Recipe_likes_idx" ON "Recipe"("likes");
+CREATE INDEX IF NOT EXISTS "Recipe_likes_idx" ON "Recipe"("likes");
 
 -- CreateIndex
-CREATE INDEX "Recipe_region_idx" ON "Recipe"("region");
+CREATE INDEX IF NOT EXISTS "Recipe_region_idx" ON "Recipe"("region");
 
 -- CreateIndex
-CREATE INDEX "Recipe_likes_createdAt_idx" ON "Recipe"("likes", "createdAt");
+CREATE INDEX IF NOT EXISTS "Recipe_likes_createdAt_idx" ON "Recipe"("likes", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "Recipe_authorId_idx" ON "Recipe"("authorId");
+CREATE INDEX IF NOT EXISTS "Recipe_authorId_idx" ON "Recipe"("authorId");
 
 -- CreateIndex
-CREATE INDEX "RecipeItem_recipeId_idx" ON "RecipeItem"("recipeId");
+CREATE INDEX IF NOT EXISTS "RecipeItem_recipeId_idx" ON "RecipeItem"("recipeId");
 
 -- CreateIndex
-CREATE INDEX "RecipeItem_ingredientId_idx" ON "RecipeItem"("ingredientId");
+CREATE INDEX IF NOT EXISTS "RecipeItem_ingredientId_idx" ON "RecipeItem"("ingredientId");
 
 -- CreateIndex
-CREATE INDEX "MealPlan_userId_date_idx" ON "MealPlan"("userId", "date");
+CREATE INDEX IF NOT EXISTS "MealPlan_userId_date_idx" ON "MealPlan"("userId", "date");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "MealPlan_userId_date_key" ON "MealPlan"("userId", "date");
+CREATE UNIQUE INDEX IF NOT EXISTS "MealPlan_userId_date_key" ON "MealPlan"("userId", "date");
 
 -- CreateIndex
-CREATE INDEX "ShoppingList_userId_createdAt_idx" ON "ShoppingList"("userId", "createdAt");
+CREATE INDEX IF NOT EXISTS "ShoppingList_userId_createdAt_idx" ON "ShoppingList"("userId", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "FoodLog_userId_date_idx" ON "FoodLog"("userId", "date");
+CREATE INDEX IF NOT EXISTS "FoodLog_userId_date_idx" ON "FoodLog"("userId", "date");
 
 -- CreateIndex
-CREATE INDEX "FoodLog_userId_mealType_idx" ON "FoodLog"("userId", "mealType");
+CREATE INDEX IF NOT EXISTS "FoodLog_userId_mealType_idx" ON "FoodLog"("userId", "mealType");
 
 -- CreateIndex
-CREATE INDEX "FoodLog_recipeId_idx" ON "FoodLog"("recipeId");
+CREATE INDEX IF NOT EXISTS "FoodLog_recipeId_idx" ON "FoodLog"("recipeId");
 
 -- CreateIndex
-CREATE INDEX "AIRecommendationLog_userId_createdAt_idx" ON "AIRecommendationLog"("userId", "createdAt");
+CREATE INDEX IF NOT EXISTS "AIRecommendationLog_userId_createdAt_idx" ON "AIRecommendationLog"("userId", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "AIRecommendationLog_modelName_idx" ON "AIRecommendationLog"("modelName");
+CREATE INDEX IF NOT EXISTS "AIRecommendationLog_modelName_idx" ON "AIRecommendationLog"("modelName");
 
 -- CreateIndex
-CREATE INDEX "UserFavoriteRecipe_userId_idx" ON "UserFavoriteRecipe"("userId");
+CREATE INDEX IF NOT EXISTS "UserFavoriteRecipe_userId_idx" ON "UserFavoriteRecipe"("userId");
 
 -- CreateIndex
-CREATE INDEX "UserFavoriteRecipe_recipeId_idx" ON "UserFavoriteRecipe"("recipeId");
+CREATE INDEX IF NOT EXISTS "UserFavoriteRecipe_recipeId_idx" ON "UserFavoriteRecipe"("recipeId");
 
 -- CreateIndex
-CREATE INDEX "UserFavoriteRecipe_userId_createdAt_idx" ON "UserFavoriteRecipe"("userId", "createdAt");
+CREATE INDEX IF NOT EXISTS "UserFavoriteRecipe_userId_createdAt_idx" ON "UserFavoriteRecipe"("userId", "createdAt");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "UserFavoriteRecipe_userId_recipeId_key" ON "UserFavoriteRecipe"("userId", "recipeId");
+CREATE UNIQUE INDEX IF NOT EXISTS "UserFavoriteRecipe_userId_recipeId_key" ON "UserFavoriteRecipe"("userId", "recipeId");
 
--- AddForeignKey
-ALTER TABLE "UserPreference" ADD CONSTRAINT "UserPreference_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+-- AddForeignKey (idempotent)
+DO $$ BEGIN
+    ALTER TABLE "UserPreference" ADD CONSTRAINT "UserPreference_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "Recipe" ADD CONSTRAINT "Recipe_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "Recipe" ADD CONSTRAINT "Recipe_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "RecipeItem" ADD CONSTRAINT "RecipeItem_ingredientId_fkey" FOREIGN KEY ("ingredientId") REFERENCES "Ingredient"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "RecipeItem" ADD CONSTRAINT "RecipeItem_ingredientId_fkey" FOREIGN KEY ("ingredientId") REFERENCES "Ingredient"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "RecipeItem" ADD CONSTRAINT "RecipeItem_recipeId_fkey" FOREIGN KEY ("recipeId") REFERENCES "Recipe"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "RecipeItem" ADD CONSTRAINT "RecipeItem_recipeId_fkey" FOREIGN KEY ("recipeId") REFERENCES "Recipe"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "MealPlan" ADD CONSTRAINT "MealPlan_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "MealPlan" ADD CONSTRAINT "MealPlan_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "ShoppingList" ADD CONSTRAINT "ShoppingList_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "ShoppingList" ADD CONSTRAINT "ShoppingList_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "FoodLog" ADD CONSTRAINT "FoodLog_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "FoodLog" ADD CONSTRAINT "FoodLog_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "FoodLog" ADD CONSTRAINT "FoodLog_recipeId_fkey" FOREIGN KEY ("recipeId") REFERENCES "Recipe"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "FoodLog" ADD CONSTRAINT "FoodLog_recipeId_fkey" FOREIGN KEY ("recipeId") REFERENCES "Recipe"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "AIRecommendationLog" ADD CONSTRAINT "AIRecommendationLog_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "AIRecommendationLog" ADD CONSTRAINT "AIRecommendationLog_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "UserFavoriteRecipe" ADD CONSTRAINT "UserFavoriteRecipe_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "UserFavoriteRecipe" ADD CONSTRAINT "UserFavoriteRecipe_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "UserFavoriteRecipe" ADD CONSTRAINT "UserFavoriteRecipe_recipeId_fkey" FOREIGN KEY ("recipeId") REFERENCES "Recipe"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "UserFavoriteRecipe" ADD CONSTRAINT "UserFavoriteRecipe_recipeId_fkey" FOREIGN KEY ("recipeId") REFERENCES "Recipe"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
