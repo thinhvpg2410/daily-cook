@@ -6,13 +6,25 @@ BEGIN
     -- Check if Ingredient table exists before adding unique constraint
     IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Ingredient') THEN
         -- Add unique constraint on Ingredient.name if it doesn't exist
+        -- Use join with pg_class to safely check constraint existence
         IF NOT EXISTS (
-            SELECT 1 FROM pg_constraint 
-            WHERE conrelid = 'Ingredient'::regclass 
-            AND conname = 'Ingredient_name_key'
+            SELECT 1 
+            FROM pg_constraint c
+            JOIN pg_class t ON c.conrelid = t.oid
+            WHERE t.relname = 'Ingredient'
+              AND c.conname = 'Ingredient_name_key'
         ) THEN
-            ALTER TABLE "Ingredient" ADD CONSTRAINT "Ingredient_name_key" UNIQUE ("name");
-            RAISE NOTICE 'Added unique constraint on Ingredient.name';
+            BEGIN
+                ALTER TABLE "Ingredient" ADD CONSTRAINT "Ingredient_name_key" UNIQUE ("name");
+                RAISE NOTICE 'Added unique constraint on Ingredient.name';
+            EXCEPTION
+                WHEN duplicate_object THEN
+                    RAISE NOTICE 'Constraint Ingredient_name_key already exists, skipping.';
+                WHEN OTHERS THEN
+                    RAISE NOTICE 'Error adding constraint: %', SQLERRM;
+            END;
+        ELSE
+            RAISE NOTICE 'Constraint Ingredient_name_key already exists, skipping.';
         END IF;
 
         -- Add index on Ingredient.name if it doesn't exist

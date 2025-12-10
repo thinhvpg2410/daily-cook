@@ -23,14 +23,23 @@ BEGIN
         CREATE INDEX IF NOT EXISTS "MealPlan_userId_date_idx" ON "MealPlan"("userId", "date");
         
         -- Add unique constraint if not exists (prevent duplicate meal plans per user per day)
+        -- Use join with pg_class to safely check constraint existence
         IF NOT EXISTS (
             SELECT 1
-            FROM pg_constraint
-            WHERE conrelid = 'MealPlan'::regclass
-              AND conname IN ('MealPlan_userId_date_key', 'mealplan_userid_date_key')
+            FROM pg_constraint c
+            JOIN pg_class t ON c.conrelid = t.oid
+            WHERE t.relname = 'MealPlan'
+              AND c.conname IN ('MealPlan_userId_date_key', 'mealplan_userid_date_key')
         ) THEN
-            ALTER TABLE "MealPlan" ADD CONSTRAINT "MealPlan_userId_date_key" UNIQUE ("userId", "date");
-            RAISE NOTICE 'Added unique constraint MealPlan_userId_date_key';
+            BEGIN
+                ALTER TABLE "MealPlan" ADD CONSTRAINT "MealPlan_userId_date_key" UNIQUE ("userId", "date");
+                RAISE NOTICE 'Added unique constraint MealPlan_userId_date_key';
+            EXCEPTION
+                WHEN duplicate_object THEN
+                    RAISE NOTICE 'Constraint MealPlan_userId_date_key already exists, skipping.';
+                WHEN OTHERS THEN
+                    RAISE NOTICE 'Error adding constraint: %', SQLERRM;
+            END;
         ELSE
             RAISE NOTICE 'Constraint MealPlan_userId_date_key already exists, skipping.';
         END IF;
