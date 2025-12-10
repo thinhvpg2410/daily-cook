@@ -5,7 +5,7 @@
     "dockerfilePath": "Dockerfile"
   },
   "watch": {
-    "includePaths": ["backend/**"]
+    "includePaths": ["**"]
   },
   "deploy": {
     "startCommand": "/app/start.sh",

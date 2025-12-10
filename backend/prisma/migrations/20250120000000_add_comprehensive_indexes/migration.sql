@@ -16,11 +16,16 @@ CREATE INDEX IF NOT EXISTS "RecipeItem_ingredientId_idx" ON "RecipeItem"("ingred
 CREATE INDEX IF NOT EXISTS "MealPlan_userId_date_idx" ON "MealPlan"("userId", "date");
 -- Add unique constraint if not exists (prevent duplicate meal plans per user per day)
 DO $$ 
+DECLARE
+    constraint_exists BOOLEAN;
 BEGIN
-    IF NOT EXISTS (
+    -- Constraint name may have been auto-generated in lowercase by Prisma in earlier migrations
+    SELECT EXISTS (
         SELECT 1 FROM pg_constraint 
-        WHERE conname = 'MealPlan_userId_date_key'
-    ) THEN
+        WHERE conname IN ('MealPlan_userId_date_key', 'mealplan_userid_date_key')
+    ) INTO constraint_exists;
+
+    IF NOT constraint_exists THEN
         ALTER TABLE "MealPlan" ADD CONSTRAINT "MealPlan_userId_date_key" UNIQUE ("userId", "date");
     END IF;
 END $$;
