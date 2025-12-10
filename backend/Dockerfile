@@ -38,8 +38,9 @@ RUN npm install -g prisma@^6.17.1
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
-# Copy start script
+# Copy start script and migration scripts
 COPY backend/start.sh ./start.sh
+COPY backend/scripts ./scripts
 
 # Make start script executable
 RUN chmod +x /app/start.sh

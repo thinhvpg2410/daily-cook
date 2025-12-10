@@ -17,7 +17,6 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "ts-node prisma/seed.ts",
-    "prisma:fix": "node scripts/force-fix-migration.js",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
