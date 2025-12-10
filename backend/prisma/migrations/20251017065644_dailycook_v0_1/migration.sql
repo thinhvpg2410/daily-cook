@@ -5,42 +5,70 @@
 DO $$ 
 BEGIN
     -- Check if RecipeItem table already exists (from init migration)
+    -- If it exists, this migration should be a no-op
     IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'RecipeItem') THEN
-        RAISE NOTICE 'RecipeItem table already exists, skipping RecipeIngredient creation';
+        RAISE NOTICE 'RecipeItem table already exists, skipping migration';
+        -- Still ensure enum exists
+        BEGIN
+            CREATE TYPE "Role" AS ENUM ('USER', 'ADMIN');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END;
         RETURN;
     END IF;
 
     -- Check if RecipeIngredient exists and needs migration
     IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'RecipeIngredient') THEN
         -- Migrate RecipeIngredient to RecipeItem
-        CREATE TABLE IF NOT EXISTS "RecipeItem" (
-            "id" TEXT NOT NULL,
-            "recipeId" TEXT NOT NULL,
-            "ingredientId" TEXT NOT NULL,
-            "amount" DOUBLE PRECISION NOT NULL,
-            "unitOverride" TEXT,
-            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            CONSTRAINT "RecipeItem_pkey" PRIMARY KEY ("id")
-        );
+        BEGIN
+            CREATE TABLE "RecipeItem" (
+                "id" TEXT NOT NULL,
+                "recipeId" TEXT NOT NULL,
+                "ingredientId" TEXT NOT NULL,
+                "amount" DOUBLE PRECISION NOT NULL,
+                "unitOverride" TEXT,
+                "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT "RecipeItem_pkey" PRIMARY KEY ("id")
+            );
+        EXCEPTION
+            WHEN duplicate_table THEN
+                RAISE NOTICE 'RecipeItem table already exists during migration';
+        END;
 
-        -- Copy data from RecipeIngredient to RecipeItem
-        INSERT INTO "RecipeItem" ("id", "recipeId", "ingredientId", "amount", "unitOverride", "createdAt")
-        SELECT "id", "recipeId", "ingredientId", "amount", "unitOverride", CURRENT_TIMESTAMP
-        FROM "RecipeIngredient"
-        ON CONFLICT DO NOTHING;
+        -- Copy data from RecipeIngredient to RecipeItem (only if RecipeIngredient still exists)
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'RecipeIngredient') THEN
+            BEGIN
+                INSERT INTO "RecipeItem" ("id", "recipeId", "ingredientId", "amount", "unitOverride", "createdAt")
+                SELECT "id", "recipeId", "ingredientId", "amount", "unitOverride", COALESCE("createdAt", CURRENT_TIMESTAMP)
+                FROM "RecipeIngredient"
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM "RecipeItem" WHERE "RecipeItem"."id" = "RecipeIngredient"."id"
+                );
+            EXCEPTION
+                WHEN OTHERS THEN
+                    RAISE NOTICE 'Error copying data from RecipeIngredient: %', SQLERRM;
+            END;
 
-        -- Drop old RecipeIngredient table
-        DROP TABLE IF EXISTS "RecipeIngredient" CASCADE;
+            -- Drop old RecipeIngredient table
+            BEGIN
+                DROP TABLE "RecipeIngredient" CASCADE;
+            EXCEPTION
+                WHEN undefined_table THEN null;
+                WHEN OTHERS THEN
+                    RAISE NOTICE 'Error dropping RecipeIngredient: %', SQLERRM;
+            END;
+        END IF;
+
         RAISE NOTICE 'Migrated RecipeIngredient to RecipeItem';
         RETURN;
     END IF;
 
     -- CreateEnum (idempotent)
-    DO $$ BEGIN
+    BEGIN
         CREATE TYPE "Role" AS ENUM ('USER', 'ADMIN');
     EXCEPTION
         WHEN duplicate_object THEN null;
-    END $$;
+    END;
 
     -- Create tables only if they don't exist
     CREATE TABLE IF NOT EXISTS "User" (
@@ -112,38 +140,57 @@ BEGIN
     );
 
     -- Create indexes (idempotent)
-    CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
-    CREATE UNIQUE INDEX IF NOT EXISTS "User_googleId_key" ON "User"("googleId");
-    CREATE UNIQUE INDEX IF NOT EXISTS "RecipeItem_recipeId_ingredientId_key" ON "RecipeItem"("recipeId", "ingredientId");
+    BEGIN
+        CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
+    EXCEPTION
+        WHEN OTHERS THEN null;
+    END;
+
+    BEGIN
+        CREATE UNIQUE INDEX IF NOT EXISTS "User_googleId_key" ON "User"("googleId");
+    EXCEPTION
+        WHEN OTHERS THEN null;
+    END;
+
+    BEGIN
+        CREATE UNIQUE INDEX IF NOT EXISTS "RecipeItem_recipeId_ingredientId_key" ON "RecipeItem"("recipeId", "ingredientId");
+    EXCEPTION
+        WHEN OTHERS THEN null;
+    END;
 
     -- Add foreign keys (idempotent)
-    DO $$ BEGIN
+    BEGIN
         ALTER TABLE "Recipe" ADD CONSTRAINT "Recipe_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
     EXCEPTION
         WHEN duplicate_object THEN null;
-    END $$;
+        WHEN OTHERS THEN null;
+    END;
 
-    DO $$ BEGIN
+    BEGIN
         ALTER TABLE "RecipeItem" ADD CONSTRAINT "RecipeItem_recipeId_fkey" FOREIGN KEY ("recipeId") REFERENCES "Recipe"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
     EXCEPTION
         WHEN duplicate_object THEN null;
-    END $$;
+        WHEN OTHERS THEN null;
+    END;
 
-    DO $$ BEGIN
+    BEGIN
         ALTER TABLE "RecipeItem" ADD CONSTRAINT "RecipeItem_ingredientId_fkey" FOREIGN KEY ("ingredientId") REFERENCES "Ingredient"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
     EXCEPTION
         WHEN duplicate_object THEN null;
-    END $$;
+        WHEN OTHERS THEN null;
+    END;
 
-    DO $$ BEGIN
+    BEGIN
         ALTER TABLE "MealPlan" ADD CONSTRAINT "MealPlan_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
     EXCEPTION
         WHEN duplicate_object THEN null;
-    END $$;
+        WHEN OTHERS THEN null;
+    END;
 
-    DO $$ BEGIN
+    BEGIN
         ALTER TABLE "ShoppingList" ADD CONSTRAINT "ShoppingList_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
     EXCEPTION
         WHEN duplicate_object THEN null;
-    END $$;
+        WHEN OTHERS THEN null;
+    END;
 END $$;
