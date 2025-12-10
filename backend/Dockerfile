@@ -4,14 +4,14 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
-COPY prisma ./prisma/
+COPY backend/package*.json ./
+COPY backend/prisma ./prisma/
 
 # Install dependencies
 RUN npm ci
 
 # Copy source code
-COPY . .
+COPY backend/ .
 
 # Generate Prisma Client
 RUN npx prisma generate
@@ -25,8 +25,8 @@ FROM node:20-alpine AS production
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
-COPY prisma ./prisma/
+COPY backend/package*.json ./
+COPY backend/prisma ./prisma/
 
 # Install production dependencies
 RUN npm ci --only=production && npm cache clean --force
@@ -39,7 +39,7 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 # Copy start script
-COPY start.sh ./start.sh
+COPY backend/start.sh ./start.sh
 
 # Make start script executable
 RUN chmod +x /app/start.sh
