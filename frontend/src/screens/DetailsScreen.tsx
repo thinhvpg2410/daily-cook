@@ -21,6 +21,7 @@ import TabBar from "./TabBar";
 import { http } from "../api/http";
 import { checkFavoriteApi, addFavoriteApi, removeFavoriteApi } from "../api/recipes";
 import { upsertMealPlanApi, getMealPlansApi, patchMealPlanSlotApi } from "../api/mealplan";
+import { createFoodLogApi, getFoodLogsApi } from "../api/food-log";
 import { useAuth } from "../context/AuthContext";
 import { API_BASE_URL } from "../config/env";
 
@@ -59,18 +60,23 @@ type RecipeDetail = {
 };
 
 export default function DetailsScreen({ route, navigation }: any) {
-  const { item } = route.params;
+  const { item, mealType: initialMealType, selectedDate: initialSelectedDate } = route.params;
   const { user } = useAuth();
   const [detail, setDetail] = useState<RecipeDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [showAddToMealPlan, setShowAddToMealPlan] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [selectedSlot, setSelectedSlot] = useState<"breakfast" | "lunch" | "dinner">("lunch");
+  const [selectedDate, setSelectedDate] = useState(
+    initialSelectedDate ? new Date(initialSelectedDate) : new Date()
+  );
+  const [selectedSlot, setSelectedSlot] = useState<"breakfast" | "lunch" | "dinner">(
+    initialMealType || "lunch"
+  );
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [addingToMealPlan, setAddingToMealPlan] = useState(false);
   const [checkedIngredients, setCheckedIngredients] = useState<Set<number>>(new Set());
+  const [cookedToday, setCookedToday] = useState(false);
   const scrollY = useRef(new Animated.Value(0)).current;
   const headerOpacity = scrollY.interpolate({
     inputRange: [200, 250],
@@ -81,6 +87,7 @@ export default function DetailsScreen({ route, navigation }: any) {
   useEffect(() => {
     loadRecipeDetail();
     checkFavorite();
+    checkCooked();
   }, [item?.id]);
 
   const loadRecipeDetail = async () => {
@@ -149,6 +156,38 @@ export default function DetailsScreen({ route, navigation }: any) {
       Alert.alert("Lỗi", e.response?.data?.message || "Không thể cập nhật yêu thích.");
     } finally {
       setFavoriteLoading(false);
+    }
+  };
+
+  const checkCooked = async () => {
+    try {
+      const dateStr = selectedDate.toISOString().split("T")[0];
+      const res = await getFoodLogsApi({ start: dateStr, end: dateStr });
+      const cooked = (res.data || []).some((l) => l.recipeId === item.id);
+      setCookedToday(cooked);
+    } catch (error) {
+      setCookedToday(false);
+    }
+  };
+
+  const markCookedToday = async () => {
+    if (cookedToday) return;
+    try {
+      const dateStr = selectedDate.toISOString().split("T")[0];
+      const res = await getFoodLogsApi({ start: dateStr, end: dateStr });
+      const cooked = (res.data || []).some((l) => l.recipeId === item.id);
+      if (!cooked) {
+        await createFoodLogApi({
+          date: dateStr,
+          mealType: selectedSlot,
+          recipeId: item.id,
+          note: "Đánh dấu đã nấu từ chi tiết món",
+        });
+      }
+      setCookedToday(true);
+      Alert.alert("Đã đánh dấu", "Món đã được ghi nhận là đã nấu hôm nay.");
+    } catch (error: any) {
+      Alert.alert("Lỗi", error?.response?.data?.message || "Không thể đánh dấu đã nấu.");
     }
   };
 
@@ -367,7 +406,13 @@ export default function DetailsScreen({ route, navigation }: any) {
           <View style={s.quickActions}>
             <TouchableOpacity
               style={[s.quickActionBtn, s.primaryActionBtn]}
-              onPress={() => navigation.navigate("Cooking", { recipe: detail })}
+              onPress={() =>
+                navigation.navigate("Cooking", {
+                  recipe: detail,
+                  mealType: selectedSlot,
+                  selectedDate: selectedDate.toISOString().split("T")[0],
+                })
+              }
             >
               <Ionicons name="play-circle" size={24} color="#fff" />
               <Text style={[s.quickActionText, { color: "#fff" }]}>Bắt đầu nấu</Text>
@@ -378,6 +423,16 @@ export default function DetailsScreen({ route, navigation }: any) {
             >
               <Ionicons name="calendar-outline" size={20} color="#f77" />
               <Text style={s.quickActionText}>Thêm vào thực đơn</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.quickActionBtn, cookedToday && s.disabledBtn]}
+              disabled={cookedToday}
+              onPress={markCookedToday}
+            >
+              <Ionicons name="checkmark-done" size={20} color={cookedToday ? "#ccc" : "#4caf50"} />
+              <Text style={[s.quickActionText, cookedToday ? { color: "#999" } : { color: "#4caf50" }]}>
+                {cookedToday ? "Đã nấu hôm nay" : "Đánh dấu đã nấu"}
+              </Text>
             </TouchableOpacity>
           </View>
         )}
@@ -725,6 +780,9 @@ const s = StyleSheet.create({
   primaryActionBtn: {
     backgroundColor: "#f77",
     borderColor: "#f77",
+  },
+  disabledBtn: {
+    opacity: 0.5,
   },
   quickActionText: {
     color: "#f77",

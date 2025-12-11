@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, RefreshControl } from "react-native";
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, RefreshControl, TouchableOpacity, SafeAreaView } from "react-native";
 import { BarChart } from "react-native-gifted-charts";
-import { MaterialIcons } from "@expo/vector-icons";
+import { MaterialIcons, Ionicons } from "@expo/vector-icons";
 import TabBar from "./TabBar";
 import { getCookingStatsApi, CookingStats } from "../api/food-log";
 import { useAuth } from "../context/AuthContext";
+import { useNavigation } from "@react-navigation/native";
 
 export default function CookingStatsScreen() {
+  const navigation = useNavigation();
   const { token } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -73,84 +75,93 @@ export default function CookingStatsScreen() {
   }
 
   return (
-    <ScrollView 
-      style={s.safe}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-    >
-      <View style={s.container}>
-        {/* Tip */}
-        <View style={s.tipBox}>
-          <Text style={s.tipText}>
-            📊 Thống kê tần suất các món bạn đã nấu — giúp tránh trùng lặp.
-          </Text>
-        </View>
-
-        <Text style={s.header}>📈 Thống kê nấu ăn</Text>
-        <Text style={s.sub}>
-          Dữ liệu tổng hợp dựa trên lịch sử nấu ăn của bạn.
-        </Text>
-
-        {/* Summary Stats */}
-        {stats && (
-          <View style={s.summaryBox}>
-            <View style={s.summaryItem}>
-              <Text style={s.summaryValue}>{stats.totalCooked}</Text>
-              <Text style={s.summaryLabel}>Tổng số lần nấu</Text>
+    <SafeAreaView style={s.safe}>
+      <ScrollView 
+        style={s.safe}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        <View style={s.container}>
+          <View style={s.headerRow}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
+              <Ionicons name="arrow-back" size={22} color="#f77" />
+            </TouchableOpacity>
+            <View style={s.headerCenter}>
+              <Text style={s.header}>📈 Thống kê nấu ăn</Text>
+              <Text style={s.sub}>Dữ liệu tổng hợp dựa trên lịch sử nấu ăn của bạn.</Text>
             </View>
-            <View style={s.summaryItem}>
-              <Text style={s.summaryValue}>{stats.totalUniqueRecipes}</Text>
-              <Text style={s.summaryLabel}>Món đã nấu</Text>
-            </View>
+            <View style={{ width: 32 }} />
           </View>
-        )}
 
-        {/* Chart */}
-        {chartData.length > 0 ? (
-          <View style={s.chartCard}>
-            <Text style={s.chartHeader}>Top 5 món nấu nhiều nhất</Text>
-            <BarChart 
-              barWidth={32} 
-              noOfSections={Math.max(4, Math.max(...chartData.map(d => d.value)))} 
-              barBorderRadius={6} 
-              data={chartData} 
-              yAxisThickness={0}
-              spacing={20}
-            />
-            <Text style={s.chartNote}>* Biểu đồ được cập nhật theo lịch sử nấu.</Text>
+          {/* Tip */}
+          <View style={s.tipBox}>
+            <Text style={s.tipText}>
+              📊 Thống kê tần suất các món bạn đã nấu — giúp tránh trùng lặp.
+            </Text>
           </View>
-        ) : (
-          <View style={s.emptyBox}>
-            <MaterialIcons name="bar-chart" size={48} color="#ccc" />
-            <Text style={s.emptyText}>Chưa có dữ liệu thống kê</Text>
-            <Text style={s.emptySubText}>Bắt đầu nấu ăn để xem thống kê!</Text>
-          </View>
-        )}
 
-        {/* List */}
-        {topDishes.length > 0 ? (
-          <>
-            <Text style={s.listHeader}>Danh sách chi tiết</Text>
-
-            {topDishes.map((item, index) => (
-              <View key={item.recipeId} style={s.itemCard}>
-                <MaterialIcons name="restaurant-menu" size={26} color="#ff8855" />
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={s.itemName}>{item.name}</Text>
-                  <Text style={s.itemMeta}>
-                    Đã nấu {item.count} lần
-                    {item.lastCooked && ` • Lần cuối: ${new Date(item.lastCooked).toLocaleDateString("vi-VN")}`}
-                  </Text>
-                  {item.kcal && (
-                    <Text style={s.itemKcal}>{Math.round(item.kcal)} kcal</Text>
-                  )}
-                </View>
+          {/* Summary Stats */}
+          {stats && (
+            <View style={s.summaryBox}>
+              <View style={s.summaryItem}>
+                <Text style={s.summaryValue}>{stats.totalCooked}</Text>
+                <Text style={s.summaryLabel}>Tổng số lần nấu</Text>
               </View>
-            ))}
-          </>
-        ) : null}
-        <TabBar />
-      </View>
-    </ScrollView>
+              <View style={s.summaryItem}>
+                <Text style={s.summaryValue}>{stats.totalUniqueRecipes}</Text>
+                <Text style={s.summaryLabel}>Món đã nấu</Text>
+              </View>
+            </View>
+          )}
+
+          {/* Chart */}
+          {chartData.length > 0 ? (
+            <View style={s.chartCard}>
+              <Text style={s.chartHeader}>Top 5 món nấu nhiều nhất</Text>
+              <BarChart 
+                barWidth={32} 
+                noOfSections={Math.max(4, Math.max(...chartData.map(d => d.value)))} 
+                barBorderRadius={6} 
+                data={chartData} 
+                yAxisThickness={0}
+                spacing={20}
+              />
+              <Text style={s.chartNote}>* Biểu đồ được cập nhật theo lịch sử nấu.</Text>
+            </View>
+          ) : (
+            <View style={s.emptyBox}>
+              <MaterialIcons name="bar-chart" size={48} color="#ccc" />
+              <Text style={s.emptyText}>Chưa có dữ liệu thống kê</Text>
+              <Text style={s.emptySubText}>Bắt đầu nấu ăn để xem thống kê!</Text>
+            </View>
+          )}
+
+          {/* List */}
+          {topDishes.length > 0 ? (
+            <>
+              <Text style={s.listHeader}>Danh sách chi tiết</Text>
+
+              {topDishes.map((item, index) => (
+                <View key={item.recipeId} style={s.itemCard}>
+                  <MaterialIcons name="restaurant-menu" size={26} color="#ff8855" />
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={s.itemName}>{item.name}</Text>
+                    <Text style={s.itemMeta}>
+                      Đã nấu {item.count} lần
+                      {item.lastCooked && ` • Lần cuối: ${new Date(item.lastCooked).toLocaleDateString("vi-VN")}`}
+                    </Text>
+                    {item.kcal && (
+                      <Text style={s.itemKcal}>{Math.round(item.kcal)} kcal</Text>
+                    )}
+                  </View>
+                </View>
+              ))}
+            </>
+          ) : null}
+          <View style={{ height: 60 }} />
+        </View>
+      </ScrollView>
+      <TabBar />
+    </SafeAreaView>
   );
 }
 
@@ -175,6 +186,16 @@ const s = StyleSheet.create({
     marginBottom: 16,
   },
   tipText: { color: "#d55", fontWeight: "500" },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+  backBtn: {
+    padding: 4,
+  },
+  headerCenter: { flex: 1, marginLeft: 8 },
 
   header: { fontSize: 26, fontWeight: "700", color: "#f77" },
   sub: { color: "#777", marginBottom: 16 },

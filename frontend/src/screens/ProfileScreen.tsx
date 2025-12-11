@@ -509,6 +509,34 @@ export default function ProfileScreen({navigation}: any) {
                         </View>
                         <Ionicons name="chevron-forward" size={20} color="#ccc"/>
                     </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={s.featureItem}
+                        onPress={() => navigation.navigate("CookingHistory")}
+                    >
+                        <View style={s.featureIconContainer}>
+                            <Ionicons name="time-outline" size={22} color="#f77"/>
+                        </View>
+                        <View style={s.featureContent}>
+                            <Text style={s.featureTitle}>Lịch sử nấu ăn</Text>
+                            <Text style={s.featureSubtitle}>Xem món đã nấu & nhắc tránh trùng lặp</Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={20} color="#ccc"/>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={s.featureItem}
+                        onPress={() => navigation.navigate("CookingStats")}
+                    >
+                        <View style={s.featureIconContainer}>
+                            <Ionicons name="stats-chart-outline" size={22} color="#f77"/>
+                        </View>
+                        <View style={s.featureContent}>
+                            <Text style={s.featureTitle}>Thống kê nấu ăn</Text>
+                            <Text style={s.featureSubtitle}>Xem món được nấu nhiều nhất</Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={20} color="#ccc"/>
+                    </TouchableOpacity>
                 </View>
 
                 {/* Account Settings */}

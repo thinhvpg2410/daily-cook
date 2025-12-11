@@ -14,8 +14,10 @@ import { Ionicons } from "@expo/vector-icons";
 import TabBar from "./TabBar";
 import { getCookingHistoryApi, CookingHistoryItem } from "../api/food-log";
 import { useAuth } from "../context/AuthContext";
+import { useNavigation } from "@react-navigation/native";
 
 export default function CookingHistoryScreen() {
+  const navigation = useNavigation();
   const { token } = useAuth();
   const [history, setHistory] = useState<CookingHistoryItem[]>([]);
   const [search, setSearch] = useState("");
@@ -112,15 +114,23 @@ export default function CookingHistoryScreen() {
         style={s.container}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
+        <View style={s.headerRow}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
+            <Ionicons name="arrow-back" size={22} color="#f77" />
+          </TouchableOpacity>
+          <View style={s.headerCenter}>
+            <Text style={s.header}>🍽️ Lịch sử món đã nấu</Text>
+            <Text style={s.sub}>Nhắc nhở tránh trùng lặp & món nhiều calo</Text>
+          </View>
+          <View style={{ width: 32 }} />
+        </View>
+
         {/* Tooltip hướng dẫn */}
         <View style={s.tipBox}>
           <Text style={s.tipText}>
             🔎 Ứng dụng tự động cảnh báo các món ăn gần đây và món có lượng calo cao.
           </Text>
         </View>
-
-        <Text style={s.header}>🍽️ Lịch sử món đã nấu</Text>
-        <Text style={s.sub}>Nhắc nhở tránh trùng lặp & món nhiều calo</Text>
 
         {/* Summary */}
         {summary && (
@@ -219,8 +229,9 @@ export default function CookingHistoryScreen() {
           })
         )}
 
-        <TabBar />
+        <View style={{ height: 60 }} />
       </ScrollView>
+      <TabBar />
     </SafeAreaView>
   );
 }
@@ -246,6 +257,16 @@ const s = StyleSheet.create({
     marginBottom: 10,
   },
   tipText: { color: "#d55", fontWeight: "500" },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  backBtn: {
+    padding: 4,
+  },
+  headerCenter: { flex: 1, marginLeft: 8 },
 
   header: { fontSize: 22, fontWeight: "700", color: "#f77" },
   sub: { color: "#777", marginBottom: 16 },
