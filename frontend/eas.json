@@ -1,0 +1,43 @@
+{
+  "cli": {
+    "version": ">= 16.28.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal"
+    },
+    "production": {
+      "autoIncrement": true
+    },
+    "android-apk": {
+      "android": {
+        "buildType": "apk"
+      },
+      "distribution": "internal",
+      "env": {
+        "EXPO_NO_NEW_ARCH": "1"
+      }
+    },
+    "ios-adhoc": {
+      "ios": {
+        "buildConfiguration": "Release",
+        "distribution": "internal"
+      },
+      "distribution": "internal"
+    },
+    "ios-simulator": {
+      "ios": {
+        "simulator": true
+      },
+      "distribution": "internal"
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
