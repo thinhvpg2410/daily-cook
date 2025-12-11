@@ -34,18 +34,18 @@ BEGIN
     -- Handle RecipeItem foreign keys (not RecipeIngredient)
     IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'RecipeItem') THEN
         -- Drop and recreate foreign keys with updated actions
-        DO $$ BEGIN
+        BEGIN
             ALTER TABLE "RecipeItem" DROP CONSTRAINT IF EXISTS "RecipeItem_recipeId_fkey";
         EXCEPTION
             WHEN undefined_object THEN null;
-        END $$;
+        END;
 
-        DO $$ BEGIN
+        BEGIN
             ALTER TABLE "RecipeItem" ADD CONSTRAINT "RecipeItem_recipeId_fkey" 
                 FOREIGN KEY ("recipeId") REFERENCES "Recipe"("id") ON DELETE CASCADE ON UPDATE CASCADE;
         EXCEPTION
             WHEN duplicate_object THEN null;
-        END $$;
+        END;
     END IF;
 
     -- Handle Recipe table modifications
@@ -82,18 +82,18 @@ BEGIN
         END IF;
 
         -- Update Recipe foreign key
-        DO $$ BEGIN
+        BEGIN
             ALTER TABLE "Recipe" DROP CONSTRAINT IF EXISTS "Recipe_authorId_fkey";
         EXCEPTION
             WHEN undefined_object THEN null;
-        END $$;
+        END;
 
-        DO $$ BEGIN
+        BEGIN
             ALTER TABLE "Recipe" ADD CONSTRAINT "Recipe_authorId_fkey" 
                 FOREIGN KEY ("authorId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
         EXCEPTION
             WHEN duplicate_object THEN null;
-        END $$;
+        END;
 
         -- Create indexes
         CREATE INDEX IF NOT EXISTS "Recipe_createdAt_idx" ON "Recipe"("createdAt");
@@ -120,18 +120,18 @@ BEGIN
         CREATE INDEX IF NOT EXISTS "MealPlan_userId_date_idx" ON "MealPlan"("userId", "date");
 
         -- Update foreign key
-        DO $$ BEGIN
+        BEGIN
             ALTER TABLE "MealPlan" DROP CONSTRAINT IF EXISTS "MealPlan_userId_fkey";
         EXCEPTION
             WHEN undefined_object THEN null;
-        END $$;
+        END;
 
-        DO $$ BEGIN
+        BEGIN
             ALTER TABLE "MealPlan" ADD CONSTRAINT "MealPlan_userId_fkey" 
                 FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
         EXCEPTION
             WHEN duplicate_object THEN null;
-        END $$;
+        END;
     END IF;
 
     -- Handle ShoppingList
@@ -139,17 +139,17 @@ BEGIN
         CREATE INDEX IF NOT EXISTS "ShoppingList_userId_createdAt_idx" ON "ShoppingList"("userId", "createdAt");
 
         -- Update foreign key
-        DO $$ BEGIN
+        BEGIN
             ALTER TABLE "ShoppingList" DROP CONSTRAINT IF EXISTS "ShoppingList_userId_fkey";
         EXCEPTION
             WHEN undefined_object THEN null;
-        END $$;
+        END;
 
-        DO $$ BEGIN
+        BEGIN
             ALTER TABLE "ShoppingList" ADD CONSTRAINT "ShoppingList_userId_fkey" 
                 FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
         EXCEPTION
             WHEN duplicate_object THEN null;
-        END $$;
+        END;
     END IF;
 END $$;
