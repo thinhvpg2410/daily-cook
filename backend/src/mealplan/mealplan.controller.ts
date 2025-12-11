@@ -54,6 +54,9 @@ export class MealPlanController {
   @ApiResponse({ status: 200, description: "Tạo/cập nhật thành công" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
   upsert(@CurrentUser() u: any, @Body() dto: CreateMealPlanDto) {
+    console.log({
+      dtoincontroller: dto,
+    })
     return this.s.upsert(u.userId, dto);
   }
 

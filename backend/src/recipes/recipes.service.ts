@@ -38,6 +38,24 @@ export class RecipesService {
     });
   }
 
+  async getByAuthorId(authorId: string) {
+    return this.prisma.recipe.findMany({
+      where: { authorId },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        image: true,
+        cookTime: true,
+        likes: true,
+        tags: true,
+        createdAt: true,
+        totalKcal: true,
+      },
+    });
+  }
+
   async search(q: QueryRecipeDto) {
     const where: any = {};
     if (q.q) {

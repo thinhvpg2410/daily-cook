@@ -1,65 +1,56 @@
-# Stage 1: Build
-FROM node:18-alpine AS builder
+# Build stage
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Configure npm với retry và timeout
-RUN npm config set fetch-retries 5 && \
-    npm config set fetch-retry-mintimeout 20000 && \
-    npm config set fetch-retry-maxtimeout 120000 && \
-    npm config set fetch-timeout 60000
-
 # Copy package files
-COPY package*.json ./
-COPY prisma ./prisma/
+COPY backend/package*.json ./
+COPY backend/prisma ./prisma/
 
-# Install all dependencies (including devDependencies for build)
-# Thêm retry wrapper
-RUN npm ci --legacy-peer-deps || \
-    (echo "First install failed, retrying..." && sleep 5 && npm ci --legacy-peer-deps) || \
-    (echo "Second install failed, retrying..." && sleep 10 && npm ci --legacy-peer-deps)
+# Install dependencies
+RUN npm ci
 
 # Copy source code
-COPY . .
+COPY backend/ .
 
 # Generate Prisma Client
 RUN npx prisma generate
 
-# Build application
+# Build the application
 RUN npm run build
 
-# Stage 2: Production
-FROM node:18-alpine
+# Production stage
+FROM node:20-alpine AS production
 
 WORKDIR /app
 
-# Configure npm với retry và timeout
-RUN npm config set fetch-retries 5 && \
-    npm config set fetch-retry-mintimeout 20000 && \
-    npm config set fetch-retry-maxtimeout 120000 && \
-    npm config set fetch-timeout 60000
-
 # Copy package files
-COPY package*.json ./
+COPY backend/package*.json ./
+COPY backend/prisma ./prisma/
 
-# Install only production dependencies với retry
-RUN npm ci --omit=dev || \
-    (echo "First install failed, retrying..." && sleep 5 && npm ci --omit=dev) || \
-    (echo "Second install failed, retrying..." && sleep 10 && npm ci --omit=dev)
+# Install production dependencies
+RUN npm ci --only=production && npm cache clean --force
+
+# Install Prisma CLI globally for migrations
+RUN npm install -g prisma@^6.17.1
 
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
-# Generate Prisma Client for production
-RUN npx prisma generate
+# Copy start script and migration scripts
+COPY backend/start.sh ./start.sh
+COPY backend/scripts ./scripts
+
+# Make start script executable
+RUN chmod +x /app/start.sh
 
 # Expose port
 EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/', (r) => {process.exit(r.statusCode === 404 ? 0 : 1)})"
+  CMD node -e "require('http').get('http://localhost:3000/', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
-# Start application
-CMD ["npm", "run", "start:prod"]
+# Start the application
+CMD ["/app/start.sh"]

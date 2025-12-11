@@ -37,6 +37,26 @@ export class RecipesController {
     return this.recipes.search(q);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get("me")
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: "Lấy danh sách công thức của người dùng hiện tại" })
+  @ApiResponse({ status: 200, description: "Danh sách công thức" })
+  @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
+  getMyRecipes(@CurrentUser() user: any) {
+    return this.recipes.getByAuthorId(user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get("me/favorites")
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: "Lấy danh sách công thức yêu thích của người dùng" })
+  @ApiResponse({ status: 200, description: "Danh sách công thức yêu thích" })
+  @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
+  getFavorites(@CurrentUser() user: any) {
+    return this.recipes.getFavorites(user.userId);
+  }
+
   @Get(":id")
   @ApiOperation({ summary: "Lấy thông tin chi tiết công thức" })
   @ApiParam({ name: "id", description: "ID công thức" })
@@ -77,15 +97,5 @@ export class RecipesController {
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
   removeFavorite(@CurrentUser() user: any, @Param("id") id: string) {
     return this.recipes.removeFavorite(user.userId, id);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Get("me/favorites")
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: "Lấy danh sách công thức yêu thích của người dùng" })
-  @ApiResponse({ status: 200, description: "Danh sách công thức yêu thích" })
-  @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
-  getFavorites(@CurrentUser() user: any) {
-    return this.recipes.getFavorites(user.userId);
   }
 }

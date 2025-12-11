@@ -201,20 +201,31 @@ export class MealPlanService {
         carbs: true,
       },
     });
-    const recipeMap = new Map(recipes.map((r) => [r.id, r]));
+    type RecipeSelect = {
+      id: string;
+      title: string;
+      image: string | null;
+      totalKcal: number | null;
+      protein: number | null;
+      fat: number | null;
+      carbs: number | null;
+    };
+    const recipeMap = new Map<string, RecipeSelect>(
+      recipes.map((r) => [r.id, r]),
+    );
 
     const mapMeals = (ids: string[]) =>
       ids
         .map((id) => recipeMap.get(id))
-        .filter(Boolean)
+        .filter((r): r is RecipeSelect => r !== undefined)
         .map((r) => ({
-          id: r!.id,
-          title: r!.title,
-          image: r!.image,
-          kcal: r!.totalKcal ?? 0,
-          protein: r!.protein ?? 0,
-          fat: r!.fat ?? 0,
-          carbs: r!.carbs ?? 0,
+          id: r.id,
+          title: r.title,
+          image: r.image,
+          kcal: r.totalKcal ?? 0,
+          protein: r.protein ?? 0,
+          fat: r.fat ?? 0,
+          carbs: r.carbs ?? 0,
         }));
 
     const breakfast = mapMeals(slots.breakfast ?? []);
@@ -240,23 +251,35 @@ export class MealPlanService {
   }
 
   async upsert(userId: string, dto: CreateMealPlanDto) {
+    console.log({
+      dto,
+    })
     const date = this.asDate(dto.date);
     const exists = await this.prisma.mealPlan.findFirst({
       where: { userId, date },
     });
     const slots = this.normalizeSlots(dto.slots);
 
+    // Validate recipe IDs
     const recipeIds = [
       ...(slots.breakfast ?? []),
       ...(slots.lunch ?? []),
       ...(slots.dinner ?? []),
     ];
-    if (recipeIds.length) {
+
+    console.log({
+      recipeIds,
+    })
+    if (recipeIds.length > 0) {
+      const uniqueIds = [...new Set(recipeIds)]; // Remove duplicates
       const cnt = await this.prisma.recipe.count({
-        where: { id: { in: recipeIds } },
+        where: { id: { in: uniqueIds } },
       });
-      if (cnt !== recipeIds.length)
-        throw new BadRequestException("Có recipeId không tồn tại");
+      if (cnt !== uniqueIds.length) {
+        throw new BadRequestException(
+          `Một hoặc nhiều công thức không tồn tại. Đã tìm thấy ${cnt}/${uniqueIds.length} công thức hợp lệ.`
+        );
+      }
     }
 
     if (!exists) {
@@ -279,6 +302,27 @@ export class MealPlanService {
   async update(userId: string, id: string, dto: UpdateMealPlanDto) {
     const r = await this.findOne(userId, id);
     const slots = dto.slots ? this.normalizeSlots(dto.slots) : (r.slots as any);
+    
+    // Validate recipe IDs if slots are provided
+    if (dto.slots) {
+      const recipeIds = [
+        ...(slots.breakfast ?? []),
+        ...(slots.lunch ?? []),
+        ...(slots.dinner ?? []),
+      ];
+      if (recipeIds.length > 0) {
+        const uniqueIds = [...new Set(recipeIds)]; // Remove duplicates
+        const cnt = await this.prisma.recipe.count({
+          where: { id: { in: uniqueIds } },
+        });
+        if (cnt !== uniqueIds.length) {
+          throw new BadRequestException(
+            `Một hoặc nhiều công thức không tồn tại. Đã tìm thấy ${cnt}/${uniqueIds.length} công thức hợp lệ.`
+          );
+        }
+      }
+    }
+    
     return this.prisma.mealPlan.update({
       where: { id: r.id },
       data: { note: dto.note ?? r.note, slots },
@@ -294,26 +338,71 @@ export class MealPlanService {
   async patchSlot(userId: string, id: string, dto: PatchSlotDto) {
     const r = await this.findOne(userId, id);
     const slots = this.normalizeSlots(r.slots as any);
-    const current = new Set(slots[dto.slot] ?? []);
+    const currentSlot = slots[dto.slot] ?? [];
 
+    // Nếu có set, dùng set và bỏ qua add/remove
     if (dto.set) {
-      const cnt = await this.prisma.recipe.count({
-        where: { id: { in: dto.set } },
-      });
-      if (cnt !== dto.set.length)
-        throw new BadRequestException("Có recipeId không tồn tại");
-      slots[dto.slot] = dto.set;
-    }
-    if (dto.add) {
-      const exists = await this.prisma.recipe.findUnique({
-        where: { id: dto.add },
-      });
-      if (!exists) throw new BadRequestException("recipeId không tồn tại");
-      current.add(dto.add);
-      slots[dto.slot] = Array.from(current);
-    }
-    if (dto.remove) {
-      current.delete(dto.remove);
+      // Validate tất cả recipe IDs
+      const uniqueIds = [...new Set(dto.set)]; // Remove duplicates
+      if (uniqueIds.length > 0) {
+        const cnt = await this.prisma.recipe.count({
+          where: { id: { in: uniqueIds } },
+        });
+        if (cnt !== uniqueIds.length) {
+          throw new BadRequestException(
+            `Một hoặc nhiều công thức không tồn tại. Đã tìm thấy ${cnt}/${uniqueIds.length} công thức hợp lệ.`
+          );
+        }
+      }
+      slots[dto.slot] = uniqueIds;
+    } else {
+      // Xử lý add/remove nếu không có set
+      // Kiểm tra xem có ít nhất một trong add/remove không
+      if (!dto.add && !dto.remove) {
+        throw new BadRequestException(
+          "Phải cung cấp ít nhất một trong các tham số: set, add, hoặc remove."
+        );
+      }
+
+      const current = new Set(currentSlot);
+
+      if (dto.add) {
+        const exists = await this.prisma.recipe.findUnique({
+          where: { id: dto.add },
+        });
+        if (!exists) {
+          throw new BadRequestException(`Công thức với ID "${dto.add}" không tồn tại.`);
+        }
+        if (current.has(dto.add)) {
+          throw new BadRequestException(`Công thức này đã có trong ${dto.slot}.`);
+        }
+        current.add(dto.add);
+      }
+      
+      if (dto.remove) {
+        // Kiểm tra sau khi xử lý add (nếu có) để đảm bảo current đã được cập nhật
+        const removeId = String(dto.remove).trim();
+        
+        // Tìm ID trong current (có thể có vấn đề về type hoặc format)
+        // Chuyển tất cả ID trong current thành string để so sánh
+        const currentIds = Array.from(current).map(id => String(id).trim());
+        const foundIndex = currentIds.findIndex(id => id === removeId);
+        
+        if (foundIndex === -1) {
+          this.logger.warn(
+            `Attempted to remove recipe ${removeId} from ${dto.slot}, but it's not in current slot. Current: ${currentIds.join(', ')}`
+          );
+          throw new BadRequestException(
+            `Công thức này không có trong ${dto.slot}. Không thể xóa.`
+          );
+        }
+        
+        // Xóa bằng cách tìm ID gốc trong Set
+        const originalId = Array.from(current)[foundIndex];
+        current.delete(originalId);
+      }
+      
+      // Cập nhật slots sau khi xử lý tất cả add/remove
       slots[dto.slot] = Array.from(current);
     }
 
@@ -346,7 +435,7 @@ export class MealPlanService {
         userId,
         date: startOfDay(addDays(toStart, diff)),
         note: p.note,
-        slots: p.slots as Prisma.InputJsonValue,
+        slots: p.slots as any,
       };
     });
 
@@ -497,6 +586,84 @@ export class MealPlanService {
 
   private estimateTotalTime(recipes: { cookTime: number | null }[]) {
     return recipes.reduce((s, r) => s + (r.cookTime ?? 30), 0);
+  }
+
+  /**
+   * Phân bổ món ăn vào các slot (breakfast/lunch/dinner) một cách logic
+   * - Breakfast: ưu tiên món nhẹ, dễ ăn (Soup, Salad, Veggie, Breakfast)
+   * - Lunch: món chính + canh/soup
+   * - Dinner: món chính + rau
+   */
+  private distributeRecipesToSlots(
+    recipes: Array<{ id: string; tags: string[] }>,
+  ): { breakfast: string[]; lunch: string[]; dinner: string[] } {
+    const breakfast: string[] = [];
+    const lunch: string[] = [];
+    const dinner: string[] = [];
+
+    // Phân loại món ăn
+    const breakfastRecipes: string[] = [];
+    const soupRecipes: string[] = [];
+    const veggieRecipes: string[] = [];
+    const mainRecipes: string[] = [];
+    const dessertRecipes: string[] = [];
+
+    for (const recipe of recipes) {
+      const tags = recipe.tags || [];
+      const lowerTags = tags.map((t) => t.toLowerCase());
+
+      if (
+        lowerTags.some((t) =>
+          ["breakfast", "salad", "pickle"].includes(t),
+        ) ||
+        (lowerTags.includes("soup") && recipes.length <= 3)
+      ) {
+        breakfastRecipes.push(recipe.id);
+      } else if (lowerTags.includes("soup")) {
+        soupRecipes.push(recipe.id);
+      } else if (
+        lowerTags.some((t) => ["veggie", "stirfry"].includes(t))
+      ) {
+        veggieRecipes.push(recipe.id);
+      } else if (
+        lowerTags.some((t) => ["dessert", "drinks"].includes(t))
+      ) {
+        dessertRecipes.push(recipe.id);
+      } else {
+        mainRecipes.push(recipe.id);
+      }
+    }
+
+    // Phân bổ vào breakfast (1-2 món nhẹ)
+    if (breakfastRecipes.length > 0) {
+      breakfast.push(...breakfastRecipes.slice(0, 2));
+    } else if (soupRecipes.length > 0 && recipes.length <= 3) {
+      breakfast.push(soupRecipes[0]);
+    } else if (recipes.length > 0) {
+      breakfast.push(recipes[0].id);
+    }
+
+    // Phân bổ vào lunch (món chính + canh)
+    const lunchMainCount = Math.ceil(mainRecipes.length / 2);
+    lunch.push(...mainRecipes.slice(0, lunchMainCount));
+    lunch.push(...soupRecipes.slice(0, 1));
+
+    // Phân bổ vào dinner (món chính còn lại + rau)
+    dinner.push(...mainRecipes.slice(lunchMainCount));
+    dinner.push(...veggieRecipes);
+
+    // Nếu dinner trống, lấy một phần từ lunch
+    if (dinner.length === 0 && lunch.length > 1) {
+      const moveToDinner = lunch.splice(-1, 1);
+      dinner.push(...moveToDinner);
+    }
+
+    // Thêm dessert vào dinner nếu có
+    if (dessertRecipes.length > 0) {
+      dinner.push(...dessertRecipes);
+    }
+
+    return { breakfast, lunch, dinner };
   }
 
   async suggestMenu(
@@ -768,36 +935,11 @@ export class MealPlanService {
       const ids = result.map((r) => r.id);
 
       if (dto.slot === "all") {
-        // Distribute recipes to slots intelligently
-        const lightRecipes = result.filter((r) =>
-          r.tags.some((t) => ["Veggie", "Soup", "Salad"].includes(t)),
-        );
-        const otherRecipes = result.filter((r) =>
-          !r.tags.some((t) => ["Veggie", "Soup", "Salad"].includes(t)),
-        );
-        
-        // Breakfast: prefer light recipes (1-2 items)
-        slots.breakfast = lightRecipes.length > 0
-          ? lightRecipes.slice(0, 2).map((r) => r.id)
-          : result.slice(0, 1).map((r) => r.id);
-        
-        // Lunch: remaining light recipes + half of other recipes
-        const remainingLight = lightRecipes.slice(2).map((r) => r.id);
-        const lunchCount = Math.max(2, Math.ceil(otherRecipes.length / 2));
-        const lunchOther = otherRecipes.slice(0, lunchCount).map((r) => r.id);
-        const lunchIds = [...remainingLight, ...lunchOther];
-        
-        // Dinner: remaining other recipes
-        const dinnerIds = otherRecipes.slice(lunchCount).map((r) => r.id);
-        
-        // If no recipes left for dinner, use some from lunch
-        if (dinnerIds.length === 0 && lunchIds.length > 2) {
-          slots.lunch = lunchIds.slice(0, -2);
-          slots.dinner = lunchIds.slice(-2);
-        } else {
-          slots.lunch = lunchIds;
-          slots.dinner = dinnerIds;
-        }
+        // Distribute recipes to slots intelligently based on meal type
+        const distributeRecipes = this.distributeRecipesToSlots(result);
+        slots.breakfast = distributeRecipes.breakfast;
+        slots.lunch = distributeRecipes.lunch;
+        slots.dinner = distributeRecipes.dinner;
       } else {
         // Replace the specific slot
         slots[dto.slot] = ids;
@@ -927,38 +1069,28 @@ export class MealPlanService {
     let dinner: any[] = [];
 
     if (slot === "breakfast") {
-      breakfast = allDishes.slice(0, 2); // Breakfast: 1-2 món
+      // Chỉ lấy món cho breakfast
+      breakfast = allDishes.slice(0, 2);
     } else if (slot === "lunch") {
-      lunch = allDishes.slice(0, 3); // Lunch: 2-3 món
+      // Chỉ lấy món cho lunch
+      lunch = allDishes.slice(0, 3);
     } else if (slot === "dinner") {
-      dinner = allDishes.slice(0, 3); // Dinner: 2-3 món
+      // Chỉ lấy món cho dinner
+      dinner = allDishes.slice(0, 3);
     } else {
-      // slot === "all" hoặc không có: phân bổ thông minh
-      const lightRecipes = allDishes.filter((r) =>
-        r.tags.some((t: string) => ["Veggie", "Soup", "Salad", "Breakfast"].includes(t))
-      );
-      const otherRecipes = allDishes.filter((r) =>
-        !r.tags.some((t: string) => ["Veggie", "Soup", "Salad", "Breakfast"].includes(t))
-      );
-
-      // Breakfast: prefer light recipes (1-2 items)
-      breakfast = lightRecipes.length > 0
-        ? lightRecipes.slice(0, 2)
-        : allDishes.length > 0 ? [allDishes[0]] : [];
-
-      // Lunch: remaining light recipes + half of other recipes
-      const remainingLight = lightRecipes.slice(2);
-      const lunchCount = Math.max(2, Math.ceil(otherRecipes.length / 2));
-      lunch = [...remainingLight, ...otherRecipes.slice(0, lunchCount)];
-
-      // Dinner: remaining other recipes
-      const dinnerTemp = otherRecipes.slice(lunchCount);
-      dinner = dinnerTemp.length > 0 ? dinnerTemp : lunch.length > 2 ? lunch.slice(-2) : [];
+      // slot === "all": sử dụng logic phân bổ thông minh
+      const distributed = this.distributeRecipesToSlots(allDishes);
+      const dishMap = new Map(allDishes.map((d) => [d.id, d]));
       
-      // Adjust lunch nếu đã lấy cho dinner
-      if (dinnerTemp.length === 0 && lunch.length > 2) {
-        lunch = lunch.slice(0, -2);
-      }
+      breakfast = distributed.breakfast
+        .map((id) => dishMap.get(id))
+        .filter((d): d is typeof allDishes[0] => d !== undefined);
+      lunch = distributed.lunch
+        .map((id) => dishMap.get(id))
+        .filter((d): d is typeof allDishes[0] => d !== undefined);
+      dinner = distributed.dinner
+        .map((id) => dishMap.get(id))
+        .filter((d): d is typeof allDishes[0] => d !== undefined);
     }
 
     // Tính tổng calories (đã được filter bởi suggestMenu)
@@ -1093,7 +1225,15 @@ export class MealPlanService {
         priceUpdatedAt: true,
       },
     });
-    const priceById = new Map(ingredients.map((ing) => [ing.id, ing] as const));
+    type IngredientPriceSelect = {
+      id: string;
+      pricePerUnit: number | null;
+      priceCurrency: string | null;
+      priceUpdatedAt: Date | null;
+    };
+    const priceById = new Map<string, IngredientPriceSelect>(
+      ingredients.map((ing) => [ing.id, ing]),
+    );
 
     return items.map((item) => {
       const price = priceById.get(item.ingredientId);

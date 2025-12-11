@@ -27,6 +27,7 @@ import { chatWithAI, suggestFromChat } from "../api/ai";
 import { getPreferencesApi } from "../api/users";
 import { useAuth } from "../context/AuthContext";
 import TabBar from "./TabBar";
+import { API_BASE_URL } from "../config/env";
 
 const { width } = Dimensions.get("window");
 const CARD_WIDTH = (width - 48) / 2; // 2 columns with padding
@@ -37,7 +38,7 @@ const PLACEHOLDER_IMG =
 function normalizeImage(src?: string | null) {
   if (!src || typeof src !== "string" || !src.trim()) return PLACEHOLDER_IMG;
   if (/^https?:\/\//i.test(src)) return src;
-  if (src.startsWith("/")) return `http://localhost:3000${src}`;
+  if (src.startsWith("/")) return `${API_BASE_URL}${src}`;
   return src;
 }
 
@@ -89,6 +90,7 @@ export default function MealSuggestScreen({ navigation }: any) {
     withinLimit: boolean;
   } | null>(null);
   const [accepting, setAccepting] = useState(false);
+  const [showSuggestionModal, setShowSuggestionModal] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const flatListRef = useRef<FlatList>(null);
 
@@ -266,6 +268,7 @@ export default function MealSuggestScreen({ navigation }: any) {
           timestamp: new Date(),
         };
         setMessages((prev) => [...prev, aiMessage]);
+        setShowSuggestionModal(true);
       } else {
         const aiMessage: Message = {
           id: Date.now().toString(),
@@ -391,40 +394,14 @@ export default function MealSuggestScreen({ navigation }: any) {
         finalDinnerIds = lunchIds.slice(-2);
       }
 
-      // Get or create meal plan
-      let mealPlanId: string;
-      try {
-        const plansRes = await getMealPlansApi({
-          start: selectedDate,
-          end: selectedDate,
-        });
-        const plans = plansRes.data || [];
-        const existingPlan = plans.find((p: any) => {
-          const planDate = typeof p.date === 'string' 
-            ? p.date.split('T')[0] 
-            : new Date(p.date).toISOString().split('T')[0];
-          return planDate === selectedDate;
-        });
-
-        if (existingPlan) {
-          mealPlanId = existingPlan.id;
-        } else {
-          const createRes = await upsertMealPlanApi({
-            date: selectedDate,
-            slots: { breakfast: [], lunch: [], dinner: [] },
-          });
-          mealPlanId = createRes.data.id;
-        }
-      } catch (error) {
-        const createRes = await upsertMealPlanApi({
-          date: selectedDate,
-          slots: { breakfast: [], lunch: [], dinner: [] },
-        });
-        mealPlanId = createRes.data.id;
-      }
-
       // Update meal plan with distributed recipes
-      await upsertMealPlanApi({
+      // upsertMealPlanApi will create or update the meal plan
+      console.log({
+        breakfast: breakfastIds,
+          lunch: finalLunchIds,
+          dinner: finalDinnerIds,
+      })
+      const result = await upsertMealPlanApi({
         date: selectedDate,
         slots: {
           breakfast: breakfastIds,
@@ -433,6 +410,16 @@ export default function MealSuggestScreen({ navigation }: any) {
         },
       });
 
+      // Verify the operation succeeded
+      if (!result.data || !result.data.id) {
+        throw new Error("Không thể tạo/cập nhật meal plan");
+      }
+
+      // Close modal and clear suggestions
+      setShowSuggestionModal(false);
+      setRecipes([]);
+      setSuggestionData(null);
+
       Alert.alert(
         "Thành công! ✅",
         `Đã thêm ${recipes.length} món ăn vào lịch ngày ${selectedDate}!\n\n- Bữa sáng: ${breakfastIds.length} món\n- Bữa trưa: ${finalLunchIds.length} món\n- Bữa tối: ${finalDinnerIds.length} món`,
@@ -440,28 +427,30 @@ export default function MealSuggestScreen({ navigation }: any) {
           {
             text: "Xem lịch",
             onPress: () => {
-              // Clear suggestions before navigating
-              setRecipes([]);
-              setSuggestionData(null);
+              // Navigate to Calendar with refresh params
+              // Use timestamp to ensure refresh triggers even if already on Calendar screen
               navigation.navigate("Calendar", { 
+                selectedDate: selectedDate,
                 refreshDate: selectedDate,
-                refresh: true 
+                refresh: true,
+                refreshTimestamp: Date.now()
               });
             },
           },
           { 
             text: "OK",
             onPress: () => {
-              // Clear suggestions after accepting
-              setRecipes([]);
-              setSuggestionData(null);
+              // Just close, suggestions already cleared
             }
           },
         ]
       );
     } catch (error: any) {
       console.error("Error accepting suggestions:", error);
-      Alert.alert("Lỗi", error?.response?.data?.message || "Không thể thêm món vào lịch. Vui lòng thử lại!");
+      Alert.alert(
+        "Lỗi", 
+        error?.response?.data?.message || error?.message || "Không thể thêm món vào lịch. Vui lòng thử lại!"
+      );
     } finally {
       setAccepting(false);
     }
@@ -538,6 +527,7 @@ export default function MealSuggestScreen({ navigation }: any) {
               timestamp: new Date(),
             };
             setMessages((prev) => [...prev, aiMessage]);
+            setShowSuggestionModal(true);
           } else {
             const response = await chatWithAI(messageText, recentMessages);
             const aiMessage: Message = {
@@ -822,7 +812,6 @@ export default function MealSuggestScreen({ navigation }: any) {
                     onChangeText={setInputText}
                     multiline
                     maxLength={500}
-                    onSubmitEditing={onSendMessage}
                   />
                   <TouchableOpacity
                     style={[
@@ -971,68 +960,6 @@ export default function MealSuggestScreen({ navigation }: any) {
             </TouchableOpacity>
           </ScrollView>
         )}
-
-        {/* Recipes Section - Always visible when there are recipes */}
-        {recipes.length > 0 && (
-          <View style={styles.recipesSection}>
-            <View style={styles.recipesHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.recipesTitle}>
-                  {recipes.length} món được gợi ý
-                </Text>
-                {suggestionData && (
-                  <View style={styles.caloriesInfo}>
-                    <Ionicons 
-                      name={suggestionData.withinLimit ? "checkmark-circle" : "warning"} 
-                      size={14} 
-                      color={suggestionData.withinLimit ? "#4CAF50" : "#FF9800"} 
-                    />
-                    <Text style={[
-                      styles.caloriesText,
-                      !suggestionData.withinLimit && styles.caloriesTextWarning
-                    ]}>
-                      {Math.round(suggestionData.totalKcal)} / {Math.round(suggestionData.dailyKcalTarget)} kcal
-                      {!suggestionData.withinLimit && " ⚠️"}
-                    </Text>
-                  </View>
-                )}
-              </View>
-              <TouchableOpacity
-                onPress={() => {
-                  setRecipes([]);
-                  setSuggestionData(null);
-                }}
-                style={styles.clearButton}
-              >
-                <Ionicons name="close-circle" size={20} color="#999" />
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity
-              style={[styles.acceptButton, accepting && styles.acceptButtonDisabled]}
-              onPress={handleAcceptSuggestions}
-              disabled={accepting}
-            >
-              {accepting ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                  <Text style={styles.acceptButtonText}>Chấp nhận tất cả</Text>
-                </>
-              )}
-            </TouchableOpacity>
-            <FlatList
-              data={recipes}
-              keyExtractor={(item) => item.id}
-              renderItem={renderRecipe}
-              numColumns={2}
-              columnWrapperStyle={styles.recipeRow}
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled={true}
-              contentContainerStyle={styles.recipesList}
-            />
-          </View>
-        )}
       </View>
 
       {/* Date Picker Modal */}
@@ -1062,6 +989,134 @@ export default function MealSuggestScreen({ navigation }: any) {
               onPress={() => setShowDatePicker(false)}
             >
               <Text style={styles.modalConfirmText}>Xác nhận</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Suggestion Modal */}
+      <Modal
+        visible={showSuggestionModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowSuggestionModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.suggestionModalContent}>
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>
+                  {recipes.length} món được gợi ý
+                </Text>
+                {suggestionData && (
+                  <View style={styles.caloriesInfo}>
+                    <Ionicons 
+                      name={suggestionData.withinLimit ? "checkmark-circle" : "warning"} 
+                      size={14} 
+                      color={suggestionData.withinLimit ? "#4CAF50" : "#FF9800"} 
+                    />
+                    <Text style={[
+                      styles.caloriesText,
+                      !suggestionData.withinLimit && styles.caloriesTextWarning
+                    ]}>
+                      {Math.round(suggestionData.totalKcal)} / {Math.round(suggestionData.dailyKcalTarget)} kcal
+                      {!suggestionData.withinLimit && " ⚠️"}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <TouchableOpacity onPress={() => setShowSuggestionModal(false)}>
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView 
+              style={styles.suggestionModalScroll}
+              showsVerticalScrollIndicator={false}
+            >
+              {recipes.map((recipe) => (
+                <View key={recipe.id} style={styles.suggestionModalRecipeCard}>
+                  <TouchableOpacity
+                    style={{ flexDirection: "row", flex: 1 }}
+                    onPress={() => {
+                      setShowSuggestionModal(false);
+                      navigation.navigate("Details", { item: recipe });
+                    }}
+                  >
+                    <Image
+                      source={{ uri: normalizeImage(recipe.image) }}
+                      style={styles.suggestionModalImage}
+                    />
+                    <View style={styles.suggestionModalRecipeInfo}>
+                      <Text style={styles.suggestionModalRecipeTitle} numberOfLines={2}>
+                        {recipe.title}
+                      </Text>
+                      <View style={styles.recipeInfo}>
+                        {recipe.cookTime && (
+                          <View style={styles.recipeInfoItem}>
+                            <Ionicons name="time-outline" size={12} color="#f77" />
+                            <Text style={styles.recipeInfoText}>{recipe.cookTime} phút</Text>
+                          </View>
+                        )}
+                        {recipe.totalKcal && (
+                          <View style={styles.recipeInfoItem}>
+                            <Ionicons name="flame-outline" size={12} color="#f77" />
+                            <Text style={styles.recipeInfoText}>
+                              {Math.round(recipe.totalKcal)} kcal
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                  <View style={styles.suggestionModalQuickActions}>
+                    <TouchableOpacity
+                      style={styles.suggestionModalQuickActionBtn}
+                      onPress={() => {
+                        handleAddToCalendar(recipe.id, "breakfast");
+                        setShowSuggestionModal(false);
+                      }}
+                    >
+                      <Text style={styles.suggestionModalQuickActionText}>Sáng</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.suggestionModalQuickActionBtn}
+                      onPress={() => {
+                        handleAddToCalendar(recipe.id, "lunch");
+                        setShowSuggestionModal(false);
+                      }}
+                    >
+                      <Text style={styles.suggestionModalQuickActionText}>Trưa</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.suggestionModalQuickActionBtn}
+                      onPress={() => {
+                        handleAddToCalendar(recipe.id, "dinner");
+                        setShowSuggestionModal(false);
+                      }}
+                    >
+                      <Text style={styles.suggestionModalQuickActionText}>Tối</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.acceptButton, accepting && styles.acceptButtonDisabled]}
+              onPress={async () => {
+                await handleAcceptSuggestions();
+              }}
+              disabled={accepting}
+            >
+              {accepting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                  <Text style={styles.acceptButtonText}>Chấp nhận tất cả</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -1533,6 +1588,67 @@ const styles = StyleSheet.create({
   modalConfirmText: {
     color: "#fff",
     fontSize: 16,
+    fontWeight: "600",
+  },
+  suggestionModalContent: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 40,
+    maxHeight: "90%",
+  },
+  suggestionModalScroll: {
+    maxHeight: 400,
+    marginBottom: 16,
+  },
+  suggestionModalRecipeCard: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    marginBottom: 12,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: "#eee",
+  },
+  suggestionModalImage: {
+    width: 100,
+    height: 100,
+    resizeMode: "cover",
+  },
+  suggestionModalRecipeInfo: {
+    flex: 1,
+    padding: 12,
+    justifyContent: "space-between",
+  },
+  suggestionModalRecipeTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 8,
+  },
+  suggestionModalQuickActions: {
+    flexDirection: "row",
+    borderTopWidth: 1,
+    borderTopColor: "#eee",
+    paddingTop: 8,
+    paddingHorizontal: 12,
+    paddingBottom: 8,
+    gap: 4,
+  },
+  suggestionModalQuickActionBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    backgroundColor: "#fff5f7",
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  suggestionModalQuickActionText: {
+    fontSize: 12,
+    color: "#f77",
     fontWeight: "600",
   },
 });

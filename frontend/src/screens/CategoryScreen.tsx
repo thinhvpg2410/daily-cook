@@ -6,6 +6,7 @@ import {
 import {Ionicons} from "@expo/vector-icons";
 import TabBar from "./TabBar";
 import {http} from "../api/http";
+import { API_BASE_URL } from "../config/env";
 
 const {width} = Dimensions.get("window");
 
@@ -30,7 +31,7 @@ const PLACEHOLDER_IMG = "https://images.unsplash.com/photo-1540189549336-e6e99c3
 function normalizeImage(src?: string | null) {
     if (!src || typeof src !== "string" || !src.trim()) return PLACEHOLDER_IMG;
     if (/^https?:\/\//i.test(src)) return src; // absolute URL
-    if (src.startsWith("/")) return `http://localhost:3000${src}`; // relative from backend
+    if (src.startsWith("/")) return `${API_BASE_URL}${src}`; // relative from backend
     return src;
 }
 

@@ -3371,10 +3371,21 @@ async function main() {
   // Create ingredients (use upsert to avoid duplicates)
   const ingredientMap = new Map<string, string>();
   for (const i of ingredients) {
+    // Only include fields that exist in IngredientSeed type to avoid issues with missing DB columns
     const ing = await prisma.ingredient.upsert({
       where: { name: i.name },
       update: {},
-      create: i,
+      create: {
+        name: i.name,
+        unit: i.unit,
+        kcal: i.kcal,
+        protein: i.protein,
+        fat: i.fat,
+        carbs: i.carbs,
+        fiber: i.fiber,
+        sugar: i.sugar,
+        sodium: i.sodium,
+      },
     });
     ingredientMap.set(i.name, ing.id);
   }
@@ -3445,7 +3456,7 @@ async function main() {
         carbs: Math.round(totalCarbs * 10) / 10,
         tags: r.tags,
         image: r.image,
-        steps: r.steps as Prisma.InputJsonValue,
+        steps: r.steps as any,
         items: { create: items },
       },
     });
