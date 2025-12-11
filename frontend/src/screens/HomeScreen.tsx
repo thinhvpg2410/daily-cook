@@ -14,7 +14,7 @@ import {
   Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import TabBar from "./TabBar";
+import TabBar, { TabBarSpacer } from "./TabBar";
 import { useAuth } from "../context/AuthContext";
 import { http } from "../api/http";
 import {
@@ -905,11 +905,9 @@ export default function HomeScreen({ navigation }: any) {
             </View>
           </>
         )}
+        <TabBarSpacer />
       </ScrollView>
-
-      <View style={{ marginBottom: 50 }}>
-        <TabBar />
-      </View>
+      <TabBar />
     </SafeAreaView>
   );
 }

@@ -11,7 +11,7 @@ import {
   RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import TabBar from "./TabBar";
+import TabBar, { TabBarSpacer } from "./TabBar";
 import { getCookingHistoryApi, CookingHistoryItem } from "../api/food-log";
 import { useAuth } from "../context/AuthContext";
 import { useNavigation } from "@react-navigation/native";
@@ -229,7 +229,7 @@ export default function CookingHistoryScreen() {
           })
         )}
 
-        <View style={{ height: 60 }} />
+        <TabBarSpacer />
       </ScrollView>
       <TabBar />
     </SafeAreaView>

@@ -17,7 +17,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import TabBar from "./TabBar";
+import TabBar, { TabBarSpacer } from "./TabBar";
 import { http } from "../api/http";
 import { checkFavoriteApi, addFavoriteApi, removeFavoriteApi } from "../api/recipes";
 import { upsertMealPlanApi, getMealPlansApi, patchMealPlanSlotApi } from "../api/mealplan";
@@ -548,7 +548,7 @@ export default function DetailsScreen({ route, navigation }: any) {
         )}
 
         {/* Bottom padding for TabBar */}
-        <View style={{ height: 100 }} />
+        <TabBarSpacer />
       </Animated.ScrollView>
 
       {/* Add to Meal Plan Modal */}
@@ -657,9 +657,7 @@ export default function DetailsScreen({ route, navigation }: any) {
         </View>
       </Modal>
 
-      <View style={{ marginBottom: 50 }}>
-        <TabBar />
-      </View>
+      <TabBar />
     </SafeAreaView>
   );
 }

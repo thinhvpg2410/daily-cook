@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import {Calendar} from "react-native-calendars";
 import {Ionicons} from "@expo/vector-icons";
-import TabBar from "./TabBar";
+import TabBar, { TabBarSpacer } from "./TabBar";
 import {useAuth} from "../context/AuthContext";
 import {getMealPlansApi, getTodaySuggestApi} from "../api/mealplan";
 import {getPreferencesApi} from "../api/users";
@@ -562,10 +562,9 @@ export default function ProfileScreen({navigation}: any) {
                         <Ionicons name="chevron-forward" size={20} color="#ccc"/>
                     </TouchableOpacity>
                 </View>
+                <TabBarSpacer />
             </ScrollView>
-            <View style={{marginBottom: 50}}>
-                <TabBar/>
-            </View>
+            <TabBar/>
         </SafeAreaView>
     );
 }

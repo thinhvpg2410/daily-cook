@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator, RefreshControl, TouchableOpacity, SafeAreaView } from "react-native";
 import { BarChart } from "react-native-gifted-charts";
 import { MaterialIcons, Ionicons } from "@expo/vector-icons";
-import TabBar from "./TabBar";
+import TabBar, { TabBarSpacer } from "./TabBar";
 import { getCookingStatsApi, CookingStats } from "../api/food-log";
 import { useAuth } from "../context/AuthContext";
 import { useNavigation } from "@react-navigation/native";
@@ -63,14 +63,20 @@ export default function CookingStatsScreen() {
 
   if (error && !stats) {
     return (
-      <ScrollView style={s.safe} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
-        <View style={s.container}>
-          <View style={s.errorBox}>
-            <Text style={s.errorText}>{error}</Text>
+      <SafeAreaView style={s.safe}>
+        <ScrollView
+          style={s.safe}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        >
+          <View style={s.container}>
+            <View style={s.errorBox}>
+              <Text style={s.errorText}>{error}</Text>
+            </View>
+            <TabBarSpacer />
           </View>
-          <TabBar />
-        </View>
-      </ScrollView>
+        </ScrollView>
+        <TabBar />
+      </SafeAreaView>
     );
   }
 
@@ -157,7 +163,7 @@ export default function CookingStatsScreen() {
               ))}
             </>
           ) : null}
-          <View style={{ height: 60 }} />
+          <TabBarSpacer />
         </View>
       </ScrollView>
       <TabBar />

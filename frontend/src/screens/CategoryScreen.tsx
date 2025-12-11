@@ -4,7 +4,7 @@ import {
     StyleSheet, Dimensions, SafeAreaView
 } from "react-native";
 import {Ionicons} from "@expo/vector-icons";
-import TabBar from "./TabBar";
+import TabBar, { TabBarSpacer } from "./TabBar";
 import {http} from "../api/http";
 import { API_BASE_URL } from "../config/env";
 
@@ -110,9 +110,8 @@ export default function CategoryScreen({route, navigation}: any) {
                     showsVerticalScrollIndicator={false}
                 />
             )}
-            <View style={{marginBottom: 50}}>
-                <TabBar/>
-            </View>
+            <TabBarSpacer />
+            <TabBar/>
         </SafeAreaView>
     );
 }

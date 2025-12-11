@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Image, ActivityIndicator, Modal, TextInput, FlatList } from "react-native";
 import { Calendar } from "react-native-calendars";
 import { Ionicons } from "@expo/vector-icons";
-import TabBar from "./TabBar";
+import TabBar, { TabBarSpacer } from "./TabBar";
 import { useAuth } from "../context/AuthContext";
 import { getMealPlansApi, getTodaySuggestApi, patchMealPlanSlotApi, upsertMealPlanApi, suggestMenuApi } from "../api/mealplan";
 import { getFoodLogsApi } from "../api/food-log";
@@ -648,9 +648,8 @@ export default function CalendarScreen({ navigation, route }: any) {
             )}
           </>
         )}
+        <TabBarSpacer />
       </ScrollView>
-
-      <View style={{ marginBottom: 50 }}><TabBar /></View>
       
       {/* Recipe Selection Modal */}
       <Modal
@@ -788,6 +787,7 @@ export default function CalendarScreen({ navigation, route }: any) {
           )}
         </SafeAreaView>
       </Modal>
+      <TabBar />
     </SafeAreaView>
   );
 }
