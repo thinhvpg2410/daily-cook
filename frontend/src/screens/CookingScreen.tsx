@@ -11,6 +11,7 @@ import {
   Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { API_BASE_URL } from "../config/env";
 
 const { width, height } = Dimensions.get("window");
 
@@ -20,7 +21,7 @@ const PLACEHOLDER_IMG =
 function normalizeImage(src?: string | null) {
   if (!src || typeof src !== "string" || !src.trim()) return PLACEHOLDER_IMG;
   if (/^https?:\/\//i.test(src)) return src;
-  if (src.startsWith("/")) return `http://localhost:3000${src}`;
+  if (src.startsWith("/")) return `${API_BASE_URL}${src}`;
   return src;
 }
 

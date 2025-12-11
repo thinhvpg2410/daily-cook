@@ -3,13 +3,14 @@ import { View, Text, SafeAreaView, ScrollView, TouchableOpacity, StyleSheet, Ima
 import { Ionicons } from "@expo/vector-icons";
 import TabBar from "./TabBar";
 import { getFavoritesApi, removeFavoriteApi, FavoriteRecipe } from "../api/recipes";
+import { API_BASE_URL } from "../config/env";
 
 const PLACEHOLDER_IMG = "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?q=80&w=1200&auto=format&fit=crop";
 
 function normalizeImage(src?: string | null) {
   if (!src || typeof src !== "string" || !src.trim()) return PLACEHOLDER_IMG;
   if (/^https?:\/\//i.test(src)) return src;
-  if (src.startsWith("/")) return `http://localhost:3000${src}`;
+  if (src.startsWith("/")) return `${API_BASE_URL}${src}`;
   return src;
 }
 

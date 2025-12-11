@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { auth } from './firebase';
+import { API_BASE_URL } from './config/env';
 
-const api = axios.create({ baseURL: process.env.EXPO_PUBLIC_BACKEND_URL });
+const api = axios.create({ baseURL: API_BASE_URL });
 
 export async function exchangeFirebaseTokenForAppJWT() {
     const user = auth.currentUser;

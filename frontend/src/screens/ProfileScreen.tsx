@@ -18,6 +18,7 @@ import {useAuth} from "../context/AuthContext";
 import {getMealPlansApi, getTodaySuggestApi} from "../api/mealplan";
 import {getPreferencesApi} from "../api/users";
 import {http} from "../api/http";
+import { API_BASE_URL } from "../config/env";
 
 const PLACEHOLDER_AVATAR =
     "https://ui-avatars.com/api/?name=User&background=f77&color=fff&size=200";
@@ -25,7 +26,7 @@ const PLACEHOLDER_AVATAR =
 function normalizeImage(src?: string | null) {
     if (!src || typeof src !== "string" || !src.trim()) return PLACEHOLDER_AVATAR;
     if (/^https?:\/\//i.test(src)) return src;
-    if (src.startsWith("/")) return `http://localhost:3000${src}`;
+    if (src.startsWith("/")) return `${API_BASE_URL}${src}`;
     return src;
 }
 

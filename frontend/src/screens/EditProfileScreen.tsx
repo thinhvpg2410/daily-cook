@@ -6,6 +6,7 @@ import {updateProfileApi, uploadAvatarApi} from "../api/users";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
 import * as ImageManipulator from "expo-image-manipulator";
+import { API_BASE_URL } from "../config/env";
 
 const PLACEHOLDER_AVATAR =
     "https://ui-avatars.com/api/?name=User&background=f77&color=fff&size=200";
@@ -13,7 +14,7 @@ const PLACEHOLDER_AVATAR =
 function normalizeImage(src?: string | null) {
     if (!src || typeof src !== "string" || !src.trim()) return PLACEHOLDER_AVATAR;
     if (/^https?:\/\//i.test(src)) return src;
-    if (src.startsWith("/")) return `http://localhost:3000${src}`;
+    if (src.startsWith("/")) return `${API_BASE_URL}${src}`;
     return src;
 }
 

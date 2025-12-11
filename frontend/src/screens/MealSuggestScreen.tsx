@@ -27,6 +27,7 @@ import { chatWithAI, suggestFromChat } from "../api/ai";
 import { getPreferencesApi } from "../api/users";
 import { useAuth } from "../context/AuthContext";
 import TabBar from "./TabBar";
+import { API_BASE_URL } from "../config/env";
 
 const { width } = Dimensions.get("window");
 const CARD_WIDTH = (width - 48) / 2; // 2 columns with padding
@@ -37,7 +38,7 @@ const PLACEHOLDER_IMG =
 function normalizeImage(src?: string | null) {
   if (!src || typeof src !== "string" || !src.trim()) return PLACEHOLDER_IMG;
   if (/^https?:\/\//i.test(src)) return src;
-  if (src.startsWith("/")) return `http://localhost:3000${src}`;
+  if (src.startsWith("/")) return `${API_BASE_URL}${src}`;
   return src;
 }
 

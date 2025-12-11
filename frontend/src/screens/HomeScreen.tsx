@@ -24,6 +24,7 @@ import {
 } from "../api/mealplan";
 import { getFoodLogStatsApi } from "../api/food-log";
 import { getPreferencesApi } from "../api/users";
+import { API_BASE_URL } from "../config/env";
 
 const { width } = Dimensions.get("window");
 const CARD_GAP = 12;
@@ -67,7 +68,7 @@ const PLACEHOLDER_IMG =
 function normalizeImage(src?: string | null) {
   if (!src || typeof src !== "string" || !src.trim()) return PLACEHOLDER_IMG;
   if (/^https?:\/\//i.test(src)) return src;
-  if (src.startsWith("/")) return `http://localhost:3000${src}`;
+  if (src.startsWith("/")) return `${API_BASE_URL}${src}`;
   return src;
 }
 
