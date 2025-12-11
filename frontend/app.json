@@ -15,7 +15,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.dailycook.app"
+      "bundleIdentifier": "com.dailycook.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -32,6 +35,12 @@
       "eas": {
         "projectId": "9e9a947b-2fde-4cc6-af16-2d5aaa9e2c4d"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/9e9a947b-2fde-4cc6-af16-2d5aaa9e2c4d"
     }
   }
 }
