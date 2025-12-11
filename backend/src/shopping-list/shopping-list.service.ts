@@ -51,9 +51,12 @@ export class ShoppingListService {
         }),
       );
     } catch (error) {
+      // Sau khi retry vẫn lỗi -> không cập nhật giá, để "Theo Thời giá"
       this.logger.warn(
-        `Không thể cập nhật giá nguyên liệu hôm nay: ${error?.message || error}`,
+        `Không thể cập nhật giá nguyên liệu sau khi retry: ${error?.message || error}. Giữ nguyên giá cũ hoặc để "Theo Thời giá".`,
       );
+      // Không cập nhật pricePerUnit, priceCurrency, priceUpdatedAt
+      // Giữ nguyên giá cũ hoặc null (sẽ hiển thị "Theo Thời giá" ở frontend)
     }
   }
 

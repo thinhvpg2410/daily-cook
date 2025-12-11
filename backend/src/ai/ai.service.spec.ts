@@ -3,9 +3,9 @@ import { BadRequestException } from "@nestjs/common";
 import { AIService } from "./ai.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { MealPlanService } from "../mealplan/mealplan.service";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import OpenAI from "openai";
 
-jest.mock("@google/generative-ai");
+jest.mock("openai");
 
 describe("AIService", () => {
   let service: AIService;
@@ -25,21 +25,17 @@ describe("AIService", () => {
     suggestMenu: jest.fn(),
   };
 
-  const mockModel = {
-    generateContent: jest.fn(),
-    startChat: jest.fn(),
-  };
-
-  const mockGenAI = {
-    getGenerativeModel: jest.fn(),
+  const mockOpenAI = {
+    chat: {
+      completions: {
+        create: jest.fn(),
+      },
+    },
   };
 
   beforeEach(() => {
-    process.env.GEMINI_API_KEY = "test_api_key";
-    (GoogleGenerativeAI as jest.MockedClass<
-      typeof GoogleGenerativeAI
-    >).mockImplementation(() => mockGenAI as any);
-    mockGenAI.getGenerativeModel.mockReturnValue(mockModel as any);
+    process.env.OPENAI_API_KEY = "test_api_key";
+    (OpenAI as jest.MockedClass<typeof OpenAI>).mockImplementation(() => mockOpenAI as any);
   });
 
   beforeEach(async () => {
@@ -64,7 +60,7 @@ describe("AIService", () => {
     });
 
     it("should return false when API key is not set", () => {
-      delete process.env.GEMINI_API_KEY;
+      delete process.env.OPENAI_API_KEY;
       const serviceWithoutKey = new AIService(
         prisma,
         mealPlanService as any
@@ -81,39 +77,41 @@ describe("AIService", () => {
       ];
 
       const mockResponse = {
-        response: {
-          text: jest.fn().mockReturnValue(
-            JSON.stringify([
-              {
-                name: "Thịt heo",
-                unit: "kg",
-                pricePerUnit: 150000,
-                currency: "VND",
-                source: "Bách Hóa Xanh 2025-01-20",
-              },
-              {
-                name: "Gạo",
-                unit: "kg",
-                pricePerUnit: 30000,
-                currency: "VND",
-                source: "Bách Hóa Xanh 2025-01-20",
-              },
-            ])
-          ),
-        },
+        choices: [
+          {
+            message: {
+              content: JSON.stringify([
+                {
+                  name: "Thịt heo",
+                  unit: "kg",
+                  pricePerUnit: 150000,
+                  currency: "VND",
+                  source: "Bách Hóa Xanh 2025-01-20",
+                },
+                {
+                  name: "Gạo",
+                  unit: "kg",
+                  pricePerUnit: 30000,
+                  currency: "VND",
+                  source: "Bách Hóa Xanh 2025-01-20",
+                },
+              ]),
+            },
+          },
+        ],
       };
 
-      mockModel.generateContent.mockResolvedValue(mockResponse);
+      mockOpenAI.chat.completions.create.mockResolvedValue(mockResponse as any);
 
       const result = await service.fetchIngredientMarketPrices(ingredients);
 
-      expect(mockModel.generateContent).toHaveBeenCalled();
+      expect(mockOpenAI.chat.completions.create).toHaveBeenCalled();
       expect(result["thịt heo"]).toHaveProperty("pricePerUnit", 150000);
       expect(result["gạo"]).toHaveProperty("pricePerUnit", 30000);
     });
 
     it("should throw BadRequestException if AI service is not configured", async () => {
-      delete process.env.GEMINI_API_KEY;
+      delete process.env.OPENAI_API_KEY;
       const serviceWithoutKey = new AIService(
         prisma,
         mealPlanService as any
@@ -135,12 +133,16 @@ describe("AIService", () => {
       const ingredients = [{ name: "Test", unit: "kg" }];
 
       const mockResponse = {
-        response: {
-          text: jest.fn().mockReturnValue("Invalid response"),
-        },
+        choices: [
+          {
+            message: {
+              content: "Invalid response",
+            },
+          },
+        ],
       };
 
-      mockModel.generateContent.mockResolvedValue(mockResponse);
+      mockOpenAI.chat.completions.create.mockResolvedValue(mockResponse as any);
 
       await expect(
         service.fetchIngredientMarketPrices(ingredients)
@@ -157,7 +159,7 @@ describe("AIService", () => {
     });
 
     it("should throw BadRequestException if AI service is not configured", async () => {
-      delete process.env.GEMINI_API_KEY;
+      delete process.env.OPENAI_API_KEY;
       const serviceWithoutKey = new AIService(
         prisma,
         mealPlanService as any
@@ -182,18 +184,20 @@ describe("AIService", () => {
         goal: "maintain",
       };
 
-      const mockChat = {
-        sendMessage: jest.fn(),
-      };
-
       mockPrisma.userPreference.findUnique.mockResolvedValue(mockPreferences);
       mockPrisma.mealPlan.findMany.mockResolvedValue([]);
-      mockModel.startChat.mockReturnValue(mockChat);
-      mockChat.sendMessage.mockResolvedValue({
-        response: {
-          text: jest.fn().mockReturnValue("Gợi ý món ăn cho bạn..."),
-        },
-      });
+      
+      const mockResponse = {
+        choices: [
+          {
+            message: {
+              content: "Gợi ý món ăn cho bạn...",
+            },
+          },
+        ],
+      };
+
+      mockOpenAI.chat.completions.create.mockResolvedValue(mockResponse as any);
 
       const result = await service.chatWithUser(userId, message);
 
@@ -202,7 +206,7 @@ describe("AIService", () => {
     });
 
     it("should throw BadRequestException if AI service is not configured", async () => {
-      delete process.env.GEMINI_API_KEY;
+      delete process.env.OPENAI_API_KEY;
       const serviceWithoutKey = new AIService(
         prisma,
         mealPlanService as any
@@ -235,14 +239,26 @@ describe("AIService", () => {
       };
 
       const mockResponse = {
-        response: {
-          text: jest.fn().mockReturnValue(JSON.stringify(mockAIResponse)),
-        },
+        choices: [
+          {
+            message: {
+              content: JSON.stringify(mockAIResponse),
+            },
+          },
+        ],
       };
 
-      mockModel.generateContent.mockResolvedValue(mockResponse);
+      mockOpenAI.chat.completions.create.mockResolvedValue(mockResponse as any);
 
-      const result = await service.calculateCalorieGoal(userId, ...Object.values(params));
+      const result = await service.calculateCalorieGoal(
+        userId,
+        params.gender,
+        params.age,
+        params.height,
+        params.weight,
+        params.activity,
+        params.goal
+      );
 
       expect(result).toHaveProperty("bmr");
       expect(result).toHaveProperty("tdee");
@@ -265,14 +281,26 @@ describe("AIService", () => {
       };
 
       const mockResponse = {
-        response: {
-          text: jest.fn().mockReturnValue("Invalid JSON"),
-        },
+        choices: [
+          {
+            message: {
+              content: "Invalid JSON",
+            },
+          },
+        ],
       };
 
-      mockModel.generateContent.mockResolvedValue(mockResponse);
+      mockOpenAI.chat.completions.create.mockResolvedValue(mockResponse as any);
 
-      const result = await service.calculateCalorieGoal(userId, ...Object.values(params));
+      const result = await service.calculateCalorieGoal(
+        userId,
+        params.gender,
+        params.age,
+        params.height,
+        params.weight,
+        params.activity,
+        params.goal
+      );
 
       // Should still return calculated values with fallback
       expect(result).toHaveProperty("dailyKcalTarget");
@@ -320,12 +348,16 @@ describe("AIService", () => {
 
       mockPrisma.userPreference.findUnique.mockResolvedValue(mockPreferences);
       const mockResponse = {
-        response: {
-          text: jest.fn().mockReturnValue(JSON.stringify(mockAIResponse)),
-        },
+        choices: [
+          {
+            message: {
+              content: JSON.stringify(mockAIResponse),
+            },
+          },
+        ],
       };
 
-      mockModel.generateContent.mockResolvedValue(mockResponse);
+      mockOpenAI.chat.completions.create.mockResolvedValue(mockResponse as any);
 
       const result = await service.generateNutritionTips(userId, nutritionData);
 
@@ -350,12 +382,16 @@ describe("AIService", () => {
 
       mockPrisma.userPreference.findUnique.mockResolvedValue(null);
       const mockResponse = {
-        response: {
-          text: jest.fn().mockReturnValue("Invalid JSON"),
-        },
+        choices: [
+          {
+            message: {
+              content: "Invalid JSON",
+            },
+          },
+        ],
       };
 
-      mockModel.generateContent.mockResolvedValue(mockResponse);
+      mockOpenAI.chat.completions.create.mockResolvedValue(mockResponse as any);
 
       const result = await service.generateNutritionTips(userId, nutritionData);
 

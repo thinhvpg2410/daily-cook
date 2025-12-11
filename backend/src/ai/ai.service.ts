@@ -4,37 +4,38 @@ import {
   Inject,
   forwardRef,
 } from "@nestjs/common";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import OpenAI from "openai";
 import { PrismaService } from "../prisma/prisma.service";
 import { MealPlanService } from "../mealplan/mealplan.service";
 
 @Injectable()
 export class AIService {
-  private genAI: GoogleGenerativeAI;
-  private model: any;
+  private openai: OpenAI;
+  private modelName: string;
 
   constructor(
     private prisma: PrismaService,
     @Inject(forwardRef(() => MealPlanService))
     private mealPlanService: MealPlanService,
   ) {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       console.warn(
-        "⚠️ GEMINI_API_KEY not found. AI features will be disabled.",
+        "⚠️ OPENAI_API_KEY not found. AI features will be disabled.",
       );
     } else {
-      this.genAI = new GoogleGenerativeAI(apiKey);
-      const defaultModel = "gemini-2.0-flash";
-      this.model = this.genAI.getGenerativeModel({ model: defaultModel });
+      this.openai = new OpenAI({ apiKey });
+      // Using gpt-4o as the default (latest OpenAI model)
+      // Note: GPT 5.1 doesn't exist yet. If you need a specific model, set OPENAI_MODEL env variable
+      this.modelName = process.env.OPENAI_MODEL || "gpt-4o";
 
       // Log để debug
-      console.log(`🤖 AI Service initialized with model: ${defaultModel}`);
+      console.log(`🤖 AI Service initialized with model: ${this.modelName}`);
     }
   }
 
   isEnabled() {
-    return Boolean(this.model);
+    return Boolean(this.openai);
   }
 
   private extractJson(text: string) {
@@ -51,10 +52,11 @@ export class AIService {
 
   async fetchIngredientMarketPrices(
     ingredients: Array<{ name: string; unit?: string }>,
+    retryCount = 2,
   ) {
-    if (!this.model) {
+    if (!this.openai) {
       throw new BadRequestException(
-        "AI service is not configured. Please set GEMINI_API_KEY.",
+        "AI service is not configured. Please set OPENAI_API_KEY.",
       );
     }
     if (!ingredients.length) return {};
@@ -70,8 +72,8 @@ export class AIService {
 
 YÊU CẦU:
 - Giá tính theo đơn vị mặc định được cung cấp (ưu tiên gram/ml nếu không có thì dùng đơn vị bán phổ biến)
-- Trả về JSON array, không có Markdown hay giải thích ngoài JSON.
-- Mỗi phần tử phải có cấu trúc:
+- Trả về JSON object với key "prices" là một array, không có Markdown hay giải thích ngoài JSON.
+- Mỗi phần tử trong array phải có cấu trúc:
 {
   "name": string,              // tên nguyên liệu
   "unit": string,              // đơn vị tham chiếu (ví dụ: "gram", "ml", "kg", "bó")
@@ -83,47 +85,89 @@ YÊU CẦU:
 DANH SÁCH NGUYÊN LIỆU:
 ${listText}
 
-Chỉ trả về JSON array hợp lệ.`;
+Trả về JSON object với format: {"prices": [...]}`;
 
-    const result = await this.model.generateContent(prompt);
-    const responseText = result.response.text();
-    const parsed = this.extractJson(responseText);
+    let lastError: Error | null = null;
 
-    if (!Array.isArray(parsed)) {
-      throw new BadRequestException("AI trả về dữ liệu giá không hợp lệ.");
-    }
+    for (let attempt = 0; attempt <= retryCount; attempt++) {
+      try {
+        const result = await this.openai.chat.completions.create({
+          model: this.modelName,
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
+        });
+        const responseText = result.choices[0]?.message?.content || "";
+        const parsed = this.extractJson(responseText);
 
-    const map: Record<
-      string,
-      {
-        pricePerUnit: number;
-        currency?: string;
-        source?: string;
-        unit?: string;
+        // Parse response - có thể là object với key "prices" hoặc array trực tiếp
+        let pricesArray: any[] = [];
+        if (Array.isArray(parsed)) {
+          pricesArray = parsed;
+        } else if (parsed && typeof parsed === "object" && "prices" in parsed) {
+          pricesArray = Array.isArray(parsed.prices) ? parsed.prices : [];
+        } else {
+          throw new BadRequestException("AI trả về dữ liệu giá không hợp lệ.");
+        }
+
+        if (!Array.isArray(pricesArray) || pricesArray.length === 0) {
+          throw new BadRequestException("AI trả về dữ liệu giá không hợp lệ.");
+        }
+
+        const map: Record<
+          string,
+          {
+            pricePerUnit: number;
+            currency?: string;
+            source?: string;
+            unit?: string;
+          }
+        > = {};
+        for (const entry of pricesArray) {
+          if (!entry?.name || typeof entry.pricePerUnit !== "number") continue;
+          const key = (entry.name as string).trim().toLowerCase();
+          map[key] = {
+            pricePerUnit: entry.pricePerUnit,
+            currency: entry.currency || "VND",
+            source: entry.source,
+            unit: entry.unit,
+          };
+        }
+
+        // Nếu có ít nhất một giá hợp lệ, trả về map
+        if (Object.keys(map).length > 0) {
+          return map;
+        }
+
+        // Nếu không có giá hợp lệ nào, throw để retry
+        throw new BadRequestException("AI trả về dữ liệu giá không hợp lệ.");
+      } catch (error: any) {
+        lastError = error;
+        if (attempt < retryCount) {
+          // Đợi một chút trước khi retry (exponential backoff)
+          const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          console.warn(
+            `⚠️ Lỗi khi lấy giá nguyên liệu (lần thử ${attempt + 1}/${retryCount + 1}), đang thử lại...`,
+          );
+          continue;
+        }
+        // Nếu đã hết số lần retry, throw error
+        throw error;
       }
-    > = {};
-    for (const entry of parsed) {
-      if (!entry?.name || typeof entry.pricePerUnit !== "number") continue;
-      const key = (entry.name as string).trim().toLowerCase();
-      map[key] = {
-        pricePerUnit: entry.pricePerUnit,
-        currency: entry.currency || "VND",
-        source: entry.source,
-        unit: entry.unit,
-      };
     }
 
-    return map;
+    // Fallback (không bao giờ đến đây, nhưng TypeScript cần)
+    throw lastError || new BadRequestException("Không thể lấy giá nguyên liệu.");
   }
 
   async listAvailableModels() {
-    if (!this.genAI) {
+    if (!this.openai) {
       throw new BadRequestException("AI service is not configured.");
     }
 
     return {
-      currentModel: this.model?.model || "unknown",
-      message: "Using gemini-2.0-flash model",
+      currentModel: this.modelName || "unknown",
+      message: `Using OpenAI ${this.modelName} model`,
     };
   }
 
@@ -138,9 +182,9 @@ Chỉ trả về JSON array hợp lệ.`;
       content: string;
     }> = [],
   ) {
-    if (!this.model) {
+    if (!this.openai) {
       throw new BadRequestException(
-        "AI service is not configured. Please set GEMINI_API_KEY.",
+        "AI service is not configured. Please set OPENAI_API_KEY.",
       );
     }
 
@@ -208,35 +252,37 @@ QUAN TRỌNG:
 - Giữ câu trả lời ngắn gọn, dễ đọc trên màn hình nhỏ
 - Luôn ưu tiên sức khỏe và dinh dưỡng của người dùng`;
 
-      // Build conversation history
-      const history = conversationHistory.map((msg) => ({
-        role: msg.role === "user" ? "user" : "model",
-        parts: [{ text: msg.content }],
-      }));
+      // Build conversation history for OpenAI format
+      const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
+        { role: "system", content: systemPrompt },
+      ];
 
-      // Add system prompt as first message
-      const chat = this.model.startChat({
-        history: [
-          {
-            role: "user",
-            parts: [{ text: systemPrompt }],
-          },
-          {
-            role: "model",
-            parts: [
-              {
-                text: "Xin chào! Tôi là trợ lý AI của DailyCook. Tôi có thể giúp bạn tìm món ăn phù hợp. Bạn muốn ăn gì hôm nay? 😊",
-              },
-            ],
-          },
-          ...history,
-        ],
+      // Add initial greeting if no history
+      if (conversationHistory.length === 0) {
+        messages.push({
+          role: "assistant",
+          content: "Xin chào! Tôi là trợ lý AI của DailyCook. Tôi có thể giúp bạn tìm món ăn phù hợp. Bạn muốn ăn gì hôm nay? 😊",
+        });
+      }
+
+      // Add conversation history
+      conversationHistory.forEach((msg) => {
+        messages.push({
+          role: msg.role === "user" ? "user" : "assistant",
+          content: msg.content,
+        });
       });
 
-      // Send user message
-      const result = await chat.sendMessage(message);
-      const response = await result.response;
-      const text = response.text();
+      // Add current user message
+      messages.push({ role: "user", content: message });
+
+      // Call OpenAI API
+      const result = await this.openai.chat.completions.create({
+        model: this.modelName,
+        messages: messages,
+      });
+
+      const text = result.choices[0]?.message?.content || "";
 
       return {
         message: text,
@@ -245,7 +291,7 @@ QUAN TRỌNG:
     } catch (error: any) {
       console.error("Error in AI chat:", error);
       throw new BadRequestException(
-        `AI service error: ${error.message || "Unknown error"}. Please check your API key and ensure gemini-2.0-flash is available.`,
+        `AI service error: ${error.message || "Unknown error"}. Please check your API key and ensure ${this.modelName} is available.`,
       );
     }
   }
@@ -258,7 +304,7 @@ QUAN TRỌNG:
     userRequest: string,
     date?: string,
   ) {
-    if (!this.model) {
+    if (!this.openai) {
       throw new BadRequestException("AI service is not configured.");
     }
 
@@ -338,8 +384,12 @@ YÊU CẦU NGƯỜI DÙNG: "${userRequest}"
 
 CHỈ TRẢ VỀ JSON, KHÔNG CÓ TEXT HAY MARKDOWN KHÁC.`;
 
-      const parseResult = await this.model.generateContent(parsePrompt);
-      const parseText = parseResult.response.text();
+      const parseResult = await this.openai.chat.completions.create({
+        model: this.modelName,
+        messages: [{ role: "user", content: parsePrompt }],
+        response_format: { type: "json_object" },
+      });
+      const parseText = parseResult.choices[0]?.message?.content || "";
 
       // Extract JSON from response (có thể có markdown code blocks)
       let parsedData: any = {};
@@ -410,7 +460,7 @@ CHỈ TRẢ VỀ JSON, KHÔNG CÓ TEXT HAY MARKDOWN KHÁC.`;
     } catch (error: any) {
       console.error("Error in AI recipe suggestion:", error);
       throw new BadRequestException(
-        `AI suggestion error: ${error.message || "Unknown error"}. Please check your API key and ensure gemini-2.0-flash is available.`,
+        `AI suggestion error: ${error.message || "Unknown error"}. Please check your API key and ensure ${this.modelName} is available.`,
       );
     }
   }
@@ -427,7 +477,7 @@ CHỈ TRẢ VỀ JSON, KHÔNG CÓ TEXT HAY MARKDOWN KHÁC.`;
     activity: "low" | "medium" | "high",
     goal: "lose_weight" | "maintain" | "gain_muscle",
   ) {
-    if (!this.model) {
+    if (!this.openai) {
       throw new BadRequestException("AI service is not configured.");
     }
 
@@ -489,8 +539,12 @@ Lưu ý:
 
 Chỉ trả về JSON, không có text khác.`;
 
-      const result = await this.model.generateContent(prompt);
-      const responseText = result.response.text();
+      const result = await this.openai.chat.completions.create({
+        model: this.modelName,
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+      });
+      const responseText = result.choices[0]?.message?.content || "";
 
       // Extract JSON from response
       let aiResult: any;
@@ -552,7 +606,7 @@ Chỉ trả về JSON, không có text khác.`;
     } catch (error: any) {
       console.error("Error in AI calorie calculation:", error);
       throw new BadRequestException(
-        `AI calculation error: ${error.message || "Unknown error"}. Please check your API key and ensure gemini-2.0-flash is available.`,
+        `AI calculation error: ${error.message || "Unknown error"}. Please check your API key and ensure ${this.modelName} is available.`,
       );
     }
   }
@@ -582,7 +636,7 @@ Chỉ trả về JSON, không có text khác.`;
       weekEnd?: string;
     },
   ) {
-    if (!this.model) {
+    if (!this.openai) {
       throw new BadRequestException("AI service is not configured.");
     }
 
@@ -654,8 +708,12 @@ TRẢ VỀ JSON với format:
 
 CHỈ TRẢ VỀ JSON, KHÔNG CÓ TEXT HAY MARKDOWN KHÁC.`;
 
-      const result = await this.model.generateContent(prompt);
-      const responseText = result.response.text();
+      const result = await this.openai.chat.completions.create({
+        model: this.modelName,
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+      });
+      const responseText = result.choices[0]?.message?.content || "";
 
       // Extract JSON from response
       let aiResult: any;
@@ -702,7 +760,7 @@ CHỈ TRẢ VỀ JSON, KHÔNG CÓ TEXT HAY MARKDOWN KHÁC.`;
     } catch (error: any) {
       console.error("Error generating nutrition tips:", error);
       throw new BadRequestException(
-        `AI tips generation error: ${error.message || "Unknown error"}. Please check your API key and ensure gemini-2.0-flash is available.`,
+        `AI tips generation error: ${error.message || "Unknown error"}. Please check your API key and ensure ${this.modelName} is available.`,
       );
     }
   }

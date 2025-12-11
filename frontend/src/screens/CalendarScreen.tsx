@@ -3,9 +3,10 @@ import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Image, ActivityIndicator, Modal, TextInput, FlatList } from "react-native";
 import { Calendar } from "react-native-calendars";
 import { Ionicons } from "@expo/vector-icons";
-import TabBar from "./TabBar";
+import TabBar, { TabBarSpacer } from "./TabBar";
 import { useAuth } from "../context/AuthContext";
 import { getMealPlansApi, getTodaySuggestApi, patchMealPlanSlotApi, upsertMealPlanApi, suggestMenuApi } from "../api/mealplan";
+import { getFoodLogsApi } from "../api/food-log";
 import { searchRecipesApi, Recipe } from "../api/recipes";
 import { http } from "../api/http";
 import { API_BASE_URL } from "../config/env";
@@ -26,6 +27,7 @@ export default function CalendarScreen({ navigation, route }: any) {
   const [loading, setLoading] = useState(false);
   const [mealData, setMealData] = useState<Record<string, { breakfast: any[]; lunch: any[]; dinner: any[] }>>({});
   const [mealPlanIds, setMealPlanIds] = useState<Record<string, string>>({});
+  const [cookedMap, setCookedMap] = useState<Record<string, boolean>>({});
   
   // Modal state
   const [showRecipeModal, setShowRecipeModal] = useState(false);
@@ -491,6 +493,29 @@ export default function CalendarScreen({ navigation, route }: any) {
     }
   }, [route?.params, token]);
 
+  // Fetch cooked recipes for selected date
+  useEffect(() => {
+    const fetchCooked = async (date: string) => {
+      if (!token) {
+        setCookedMap({});
+        return;
+      }
+      try {
+        const res = await getFoodLogsApi({ start: date, end: date });
+        const cooked: Record<string, boolean> = {};
+        (res.data || []).forEach((log) => {
+          if (log.recipeId) cooked[log.recipeId] = true;
+        });
+        setCookedMap(cooked);
+      } catch (error) {
+        console.error("Error fetching cooked state:", error);
+        setCookedMap({});
+      }
+    };
+
+    fetchCooked(selectedDate);
+  }, [selectedDate, token]);
+
   const meals = mealData[selectedDate] || { breakfast: [], lunch: [], dinner: [] };
 
   const handleDateChange = (day: any) => {
@@ -577,26 +602,37 @@ export default function CalendarScreen({ navigation, route }: any) {
                     <View key={dish.id || idx} style={s.dishCard}>
                       <TouchableOpacity
                         style={{ flex: 1, flexDirection: "row", alignItems: "center" }}
-                        onPress={() => navigation.navigate("Details", { item: dish })}
+                        onPress={() =>
+                          navigation.navigate("Details", {
+                            item: dish,
+                            mealType,
+                            selectedDate,
+                          })
+                        }
                       >
                         <Image source={{ uri: dish.image }} style={s.dishImage} />
                         <View style={{ flex: 1, marginLeft: 10 }}>
                           <Text style={s.dishTitle}>{dish.title}</Text>
                           <Text style={s.dishTime}>{dish.time}</Text>
+                          {cookedMap[dish.id] && (
+                            <Text style={s.cookedBadge}>Đã nấu</Text>
+                          )}
                         </View>
                       </TouchableOpacity>
                       <View style={s.dishActions}>
                         <TouchableOpacity
-                          style={s.actionButton}
+                          style={[s.actionButton, cookedMap[dish.id] && s.disabledAction]}
+                          disabled={!!cookedMap[dish.id]}
                           onPress={() => openRecipeModal(mealType, dish.id)}
                         >
-                          <Ionicons name="swap-horizontal" size={20} color="#4dabf7" />
+                          <Ionicons name="swap-horizontal" size={20} color={cookedMap[dish.id] ? "#ccc" : "#4dabf7"} />
                         </TouchableOpacity>
                         <TouchableOpacity
-                          style={s.actionButton}
+                          style={[s.actionButton, cookedMap[dish.id] && s.disabledAction]}
+                          disabled={!!cookedMap[dish.id]}
                           onPress={() => handleRemoveRecipe(dish.id, mealType)}
                         >
-                          <Ionicons name="trash-outline" size={20} color="#ff6b6b" />
+                          <Ionicons name="trash-outline" size={20} color={cookedMap[dish.id] ? "#ccc" : "#ff6b6b"} />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -612,9 +648,8 @@ export default function CalendarScreen({ navigation, route }: any) {
             )}
           </>
         )}
+        <TabBarSpacer />
       </ScrollView>
-
-      <View style={{ marginBottom: 50 }}><TabBar /></View>
       
       {/* Recipe Selection Modal */}
       <Modal
@@ -752,6 +787,7 @@ export default function CalendarScreen({ navigation, route }: any) {
           )}
         </SafeAreaView>
       </Modal>
+      <TabBar />
     </SafeAreaView>
   );
 }
@@ -815,6 +851,12 @@ const s = StyleSheet.create({
   dishImage:{width:60,height:60,borderRadius:8},
   dishTitle:{fontSize:14,fontWeight:"600",color:"#333"},
   dishTime:{fontSize:12,color:"#555",marginTop:2},
+  cookedBadge: {
+    marginTop: 4,
+    color: "#f77",
+    fontWeight: "700",
+    fontSize: 12,
+  },
   dishActions: {
     flexDirection: "row",
     gap: 8,
@@ -822,6 +864,9 @@ const s = StyleSheet.create({
   },
   actionButton: {
     padding: 8,
+  },
+  disabledAction: {
+    opacity: 0.4,
   },
   // Modal styles
   modalContainer: {

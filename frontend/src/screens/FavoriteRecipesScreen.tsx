@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, SafeAreaView, ScrollView, TouchableOpacity, StyleSheet, Image, ActivityIndicator, Alert, RefreshControl } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import TabBar from "./TabBar";
+import TabBar, { TabBarSpacer } from "./TabBar";
 import { getFavoritesApi, removeFavoriteApi, FavoriteRecipe } from "../api/recipes";
 import { API_BASE_URL } from "../config/env";
 
@@ -115,11 +115,10 @@ export default function FavoriteRecipesScreen({ navigation }: any) {
             </TouchableOpacity>
           ))
         )}
+        <TabBarSpacer />
       </ScrollView>
 
-      <View style={{ marginBottom: 50 }}>
-        <TabBar />
-      </View>
+      <TabBar />
     </SafeAreaView>
   );
 }

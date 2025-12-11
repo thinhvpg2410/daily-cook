@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import TabBar from "./TabBar";
+import TabBar, { TabBarSpacer } from "./TabBar";
 import { getPreferencesApi, updatePreferencesApi, UserPreferences } from "../api/users";
 import { getFoodLogStatsApi } from "../api/food-log";
 import { calculateCalorieGoal, CalculateCalorieGoalResponse } from "../api/ai";
@@ -885,10 +885,9 @@ export default function NutritionGoalsScreen({ navigation }: any) {
             </>
           )}
         </TouchableOpacity>
+        <TabBarSpacer />
       </ScrollView>
-      <View style={{ marginBottom: 50 }}>
-        <TabBar />
-      </View>
+      <TabBar />
     </SafeAreaView>
   );
 }

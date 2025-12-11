@@ -56,6 +56,34 @@ export class FoodLogController {
     return this.service.getStats(user.userId, start, end);
   }
 
+  @Get("cooking-stats")
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: "Lấy thống kê món nấu nhiều nhất" })
+  @ApiQuery({ name: "limit", description: "Số lượng món muốn lấy", required: false, type: Number })
+  @ApiResponse({ status: 200, description: "Thống kê món nấu nhiều nhất" })
+  @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
+  getCookingStats(
+    @CurrentUser() user: any,
+    @Query("limit") limit?: string,
+  ) {
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    return this.service.getCookingStats(user.userId, limitNum);
+  }
+
+  @Get("cooking-history")
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: "Lấy lịch sử nấu ăn với logic nhắc nhở tránh trùng lặp thông minh" })
+  @ApiQuery({ name: "start", description: "Ngày bắt đầu (ISO 8601)", required: false })
+  @ApiQuery({ name: "end", description: "Ngày kết thúc (ISO 8601)", required: false })
+  @ApiResponse({ status: 200, description: "Lịch sử nấu ăn với cảnh báo" })
+  @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
+  getCookingHistory(
+    @CurrentUser() user: any,
+    @Query() query: QueryFoodLogDto,
+  ) {
+    return this.service.getCookingHistory(user.userId, query);
+  }
+
   @Get(":id")
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: "Lấy thông tin chi tiết bản ghi ăn uống" })

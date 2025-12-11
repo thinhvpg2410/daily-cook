@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import TabBar from "./TabBar";
+import TabBar, { TabBarSpacer } from "./TabBar";
 import { useAuth } from "../context/AuthContext";
 import { getShoppingListApi } from "../api/mealplan";
 
@@ -392,10 +392,9 @@ export default function ShoppingListScreen() {
             </View>
           </>
         )}
+        <TabBarSpacer />
       </ScrollView>
-      <View style={{ marginBottom: 50 }}>
-        <TabBar />
-      </View>
+      <TabBar />
     </SafeAreaView>
   );
 }

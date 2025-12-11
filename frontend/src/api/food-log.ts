@@ -84,3 +84,44 @@ export const getFoodLogApi = (id: string) => {
   return http.get<FoodLog>(`/food-logs/${id}`);
 };
 
+export interface CookingStats {
+  topDishes: Array<{
+    recipeId: string;
+    name: string;
+    image?: string | null;
+    count: number;
+    lastCooked: string;
+    kcal?: number | null;
+    fat?: number | null;
+    protein?: number | null;
+    carbs?: number | null;
+  }>;
+  totalUniqueRecipes: number;
+  totalCooked: number;
+}
+
+export interface CookingHistoryItem extends FoodLog {
+  warnings: string[];
+  cookedTimes: number;
+  daysSinceCooked?: number;
+}
+
+export interface CookingHistoryResponse {
+  history: CookingHistoryItem[];
+  summary: {
+    totalItems: number;
+    uniqueRecipes: number;
+    frequentDuplicateRecipes: number;
+  };
+}
+
+export const getCookingStatsApi = (limit?: number) => {
+  return http.get<CookingStats>("/food-logs/cooking-stats", {
+    params: limit ? { limit } : undefined,
+  });
+};
+
+export const getCookingHistoryApi = (params?: { start?: string; end?: string }) => {
+  return http.get<CookingHistoryResponse>("/food-logs/cooking-history", { params });
+};
+

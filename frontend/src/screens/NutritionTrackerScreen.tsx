@@ -15,7 +15,7 @@ import {
   Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import TabBar from "./TabBar";
+import TabBar, { TabBarSpacer } from "./TabBar";
 import {
   getFoodLogStatsApi,
   getFoodLogsApi,
@@ -1054,9 +1054,8 @@ export default function NutritionTracker({ navigation }: any) {
         </View>
       </Modal>
 
-      <View style={{ marginBottom: 50 }}>
-        <TabBar />
-      </View>
+      <TabBarSpacer />
+      <TabBar />
     </SafeAreaView>
   );
 }

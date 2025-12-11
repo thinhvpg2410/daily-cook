@@ -10,7 +10,7 @@ import {
   FlatList,
 } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
-import TabBar from "./TabBar";
+import TabBar, { TabBarSpacer } from "./TabBar";
 
 const mockIngredients = [
   "Thịt gà",
@@ -145,8 +145,9 @@ export default function FridgeScreen() {
             </View>
           );
         })}
-        <TabBar />
+        <TabBarSpacer />
       </ScrollView>
+      <TabBar />
     </SafeAreaView>
   );
 }

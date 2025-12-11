@@ -26,7 +26,7 @@ import {
 import { chatWithAI, suggestFromChat } from "../api/ai";
 import { getPreferencesApi } from "../api/users";
 import { useAuth } from "../context/AuthContext";
-import TabBar from "./TabBar";
+import TabBar, { TabBarSpacer } from "./TabBar";
 import { API_BASE_URL } from "../config/env";
 
 const { width } = Dimensions.get("window");
@@ -1122,9 +1122,8 @@ export default function MealSuggestScreen({ navigation }: any) {
         </View>
       </Modal>
 
-      <View style={{ marginBottom: 50 }}>
-        <TabBar />
-      </View>
+      <TabBarSpacer />
+      <TabBar />
     </SafeAreaView>
   );
 }
