@@ -52,6 +52,7 @@ export class AIService {
 
   async fetchIngredientMarketPrices(
     ingredients: Array<{ name: string; unit?: string }>,
+    retryCount = 2,
   ) {
     if (!this.openai) {
       throw new BadRequestException(
@@ -71,8 +72,8 @@ export class AIService {
 
 YÊU CẦU:
 - Giá tính theo đơn vị mặc định được cung cấp (ưu tiên gram/ml nếu không có thì dùng đơn vị bán phổ biến)
-- Trả về JSON array, không có Markdown hay giải thích ngoài JSON.
-- Mỗi phần tử phải có cấu trúc:
+- Trả về JSON object với key "prices" là một array, không có Markdown hay giải thích ngoài JSON.
+- Mỗi phần tử trong array phải có cấu trúc:
 {
   "name": string,              // tên nguyên liệu
   "unit": string,              // đơn vị tham chiếu (ví dụ: "gram", "ml", "kg", "bó")
@@ -84,41 +85,79 @@ YÊU CẦU:
 DANH SÁCH NGUYÊN LIỆU:
 ${listText}
 
-Chỉ trả về JSON array hợp lệ.`;
+Trả về JSON object với format: {"prices": [...]}`;
 
-    const result = await this.openai.chat.completions.create({
-      model: this.modelName,
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-    });
-    const responseText = result.choices[0]?.message?.content || "";
-    const parsed = this.extractJson(responseText);
+    let lastError: Error | null = null;
 
-    if (!Array.isArray(parsed)) {
-      throw new BadRequestException("AI trả về dữ liệu giá không hợp lệ.");
-    }
+    for (let attempt = 0; attempt <= retryCount; attempt++) {
+      try {
+        const result = await this.openai.chat.completions.create({
+          model: this.modelName,
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
+        });
+        const responseText = result.choices[0]?.message?.content || "";
+        const parsed = this.extractJson(responseText);
 
-    const map: Record<
-      string,
-      {
-        pricePerUnit: number;
-        currency?: string;
-        source?: string;
-        unit?: string;
+        // Parse response - có thể là object với key "prices" hoặc array trực tiếp
+        let pricesArray: any[] = [];
+        if (Array.isArray(parsed)) {
+          pricesArray = parsed;
+        } else if (parsed && typeof parsed === "object" && "prices" in parsed) {
+          pricesArray = Array.isArray(parsed.prices) ? parsed.prices : [];
+        } else {
+          throw new BadRequestException("AI trả về dữ liệu giá không hợp lệ.");
+        }
+
+        if (!Array.isArray(pricesArray) || pricesArray.length === 0) {
+          throw new BadRequestException("AI trả về dữ liệu giá không hợp lệ.");
+        }
+
+        const map: Record<
+          string,
+          {
+            pricePerUnit: number;
+            currency?: string;
+            source?: string;
+            unit?: string;
+          }
+        > = {};
+        for (const entry of pricesArray) {
+          if (!entry?.name || typeof entry.pricePerUnit !== "number") continue;
+          const key = (entry.name as string).trim().toLowerCase();
+          map[key] = {
+            pricePerUnit: entry.pricePerUnit,
+            currency: entry.currency || "VND",
+            source: entry.source,
+            unit: entry.unit,
+          };
+        }
+
+        // Nếu có ít nhất một giá hợp lệ, trả về map
+        if (Object.keys(map).length > 0) {
+          return map;
+        }
+
+        // Nếu không có giá hợp lệ nào, throw để retry
+        throw new BadRequestException("AI trả về dữ liệu giá không hợp lệ.");
+      } catch (error: any) {
+        lastError = error;
+        if (attempt < retryCount) {
+          // Đợi một chút trước khi retry (exponential backoff)
+          const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          console.warn(
+            `⚠️ Lỗi khi lấy giá nguyên liệu (lần thử ${attempt + 1}/${retryCount + 1}), đang thử lại...`,
+          );
+          continue;
+        }
+        // Nếu đã hết số lần retry, throw error
+        throw error;
       }
-    > = {};
-    for (const entry of parsed) {
-      if (!entry?.name || typeof entry.pricePerUnit !== "number") continue;
-      const key = (entry.name as string).trim().toLowerCase();
-      map[key] = {
-        pricePerUnit: entry.pricePerUnit,
-        currency: entry.currency || "VND",
-        source: entry.source,
-        unit: entry.unit,
-      };
     }
 
-    return map;
+    // Fallback (không bao giờ đến đây, nhưng TypeScript cần)
+    throw lastError || new BadRequestException("Không thể lấy giá nguyên liệu.");
   }
 
   async listAvailableModels() {

@@ -134,24 +134,30 @@ export class MealPlanService {
   }
 
   async getRange(userId: string, q: QueryMealPlanDto) {
-    const start = q.start
-      ? this.asDate(q.start)
-      : startOfWeek(new Date(), { weekStartsOn: 1 });
-    const end = q.end
-      ? this.asDate(q.end)
-      : endOfWeek(new Date(), { weekStartsOn: 1 });
+    try {
+      const start = q.start
+        ? this.asDate(q.start)
+        : startOfWeek(new Date(), { weekStartsOn: 1 });
+      const end = q.end
+        ? this.asDate(q.end)
+        : endOfWeek(new Date(), { weekStartsOn: 1 });
 
-    const rows = await this.prisma.mealPlan.findMany({
-      where: { userId, date: { gte: start, lte: end } },
-      orderBy: { date: "asc" },
-    });
+      const rows = await this.prisma.mealPlan.findMany({
+        where: { userId, date: { gte: start, lte: end } },
+        orderBy: { date: "asc" },
+      });
 
-    return rows.map((r) => ({
-      id: r.id,
-      date: formatISO(r.date, { representation: "date" }),
-      note: r.note,
-      slots: r.slots as any as Slots,
-    }));
+      return rows.map((r) => ({
+        id: r.id,
+        date: formatISO(r.date, { representation: "date" }),
+        note: r.note,
+        slots: r.slots as any as Slots,
+      }));
+    } catch (error) {
+      this.logger.error("Error in getRange:", error);
+      // Trả về empty array thay vì throw error
+      return [];
+    }
   }
 
   async getDailyNutrition(userId: string, dateStr?: string) {
@@ -1045,119 +1051,136 @@ export class MealPlanService {
     const isDietMode = dietType === "low_carb" || pref?.goal === "lose_weight";
     const isEatClean = dietType === "eat_clean" || false;
 
-    // Sử dụng suggestMenu để đảm bảo calorie filtering đúng
-    const suggestions = await this.suggestMenu(
-      userId,
-      {
-        date: todayStr,
-        slot: slot ?? "all",
-        region,
-        vegetarian: dietType === "vegan" || dietType === "vegetarian",
-        excludeIngredientNames: dislikedIngredients.join(","),
-        persist: false, // Chỉ suggest, không lưu
-      },
-      null, // recipeCount: null để dùng default
-      isDietMode,
-      isEatClean,
-    );
-
-    const allDishes = suggestions.dishes || [];
-    
-    // Phân bổ vào breakfast/lunch/dinner dựa trên slot
-    let breakfast: any[] = [];
-    let lunch: any[] = [];
-    let dinner: any[] = [];
-
-    if (slot === "breakfast") {
-      // Chỉ lấy món cho breakfast
-      breakfast = allDishes.slice(0, 2);
-    } else if (slot === "lunch") {
-      // Chỉ lấy món cho lunch
-      lunch = allDishes.slice(0, 3);
-    } else if (slot === "dinner") {
-      // Chỉ lấy món cho dinner
-      dinner = allDishes.slice(0, 3);
-    } else {
-      // slot === "all": sử dụng logic phân bổ thông minh
-      const distributed = this.distributeRecipesToSlots(allDishes);
-      const dishMap = new Map(allDishes.map((d) => [d.id, d]));
-      
-      breakfast = distributed.breakfast
-        .map((id) => dishMap.get(id))
-        .filter((d): d is typeof allDishes[0] => d !== undefined);
-      lunch = distributed.lunch
-        .map((id) => dishMap.get(id))
-        .filter((d): d is typeof allDishes[0] => d !== undefined);
-      dinner = distributed.dinner
-        .map((id) => dishMap.get(id))
-        .filter((d): d is typeof allDishes[0] => d !== undefined);
-    }
-
-    // Tính tổng calories (đã được filter bởi suggestMenu)
-    const totalKcal = suggestions.totalKcal || 0;
-
-    // Log recommendation to AI log
-    await this.prisma.aIRecommendationLog.create({
-      data: {
+    try {
+      // Sử dụng suggestMenu để đảm bảo calorie filtering đúng
+      const suggestions = await this.suggestMenu(
         userId,
-        input: {
+        {
           date: todayStr,
-          slot: slot || "all",
+          slot: slot ?? "all",
           region,
-          dietType,
-          dailyKcalTarget: pref?.dailyKcalTarget || 2000,
+          vegetarian: dietType === "vegan" || dietType === "vegetarian",
+          excludeIngredientNames: dislikedIngredients.join(","),
+          persist: false, // Chỉ suggest, không lưu
         },
-        output: {
-          breakfast: breakfast.map((r) => r.id),
-          lunch: lunch.map((r) => r.id),
-          dinner: dinner.map((r) => r.id),
-          totalKcal,
-          withinLimit: suggestions.withinLimit,
-        },
-        modelName: "DailyCook-v1",
-      },
-    });
+        null, // recipeCount: null để dùng default
+        isDietMode,
+        isEatClean,
+      );
 
-    // Return kết quả
-    if (slot === "breakfast") {
+      const allDishes = suggestions.dishes || [];
+      
+      // Phân bổ vào breakfast/lunch/dinner dựa trên slot
+      let breakfast: any[] = [];
+      let lunch: any[] = [];
+      let dinner: any[] = [];
+
+      if (slot === "breakfast") {
+        // Chỉ lấy món cho breakfast
+        breakfast = allDishes.slice(0, 2);
+      } else if (slot === "lunch") {
+        // Chỉ lấy món cho lunch
+        lunch = allDishes.slice(0, 3);
+      } else if (slot === "dinner") {
+        // Chỉ lấy món cho dinner
+        dinner = allDishes.slice(0, 3);
+      } else {
+        // slot === "all": sử dụng logic phân bổ thông minh
+        const distributed = this.distributeRecipesToSlots(allDishes);
+        const dishMap = new Map(allDishes.map((d) => [d.id, d]));
+        
+        breakfast = distributed.breakfast
+          .map((id) => dishMap.get(id))
+          .filter((d): d is typeof allDishes[0] => d !== undefined);
+        lunch = distributed.lunch
+          .map((id) => dishMap.get(id))
+          .filter((d): d is typeof allDishes[0] => d !== undefined);
+        dinner = distributed.dinner
+          .map((id) => dishMap.get(id))
+          .filter((d): d is typeof allDishes[0] => d !== undefined);
+      }
+
+      // Tính tổng calories (đã được filter bởi suggestMenu)
+      const totalKcal = suggestions.totalKcal || 0;
+
+      // Log recommendation to AI log (không block nếu lỗi)
+      try {
+        await this.prisma.aIRecommendationLog.create({
+          data: {
+            userId,
+            input: {
+              date: todayStr,
+              slot: slot || "all",
+              region,
+              dietType,
+              dailyKcalTarget: pref?.dailyKcalTarget || 2000,
+            },
+            output: {
+              breakfast: breakfast.map((r) => r.id),
+              lunch: lunch.map((r) => r.id),
+              dinner: dinner.map((r) => r.id),
+              totalKcal,
+              withinLimit: suggestions.withinLimit,
+            },
+            modelName: "DailyCook-v1",
+          },
+        });
+      } catch (logError) {
+        this.logger.warn("Failed to log AI recommendation:", logError);
+      }
+
+      // Return kết quả
+      if (slot === "breakfast") {
+        return {
+          date: todayStr,
+          hasPlan: false,
+          breakfast,
+          lunch: [],
+          dinner: [],
+          totalKcal: breakfast.reduce((s, r) => s + (r.totalKcal || 0), 0),
+        };
+      }
+      if (slot === "lunch") {
+        return {
+          date: todayStr,
+          hasPlan: false,
+          breakfast: [],
+          lunch,
+          dinner: [],
+          totalKcal: lunch.reduce((s, r) => s + (r.totalKcal || 0), 0),
+        };
+      }
+      if (slot === "dinner") {
+        return {
+          date: todayStr,
+          hasPlan: false,
+          breakfast: [],
+          lunch: [],
+          dinner,
+          totalKcal: dinner.reduce((s, r) => s + (r.totalKcal || 0), 0),
+        };
+      }
+
       return {
         date: todayStr,
         hasPlan: false,
         breakfast,
-        lunch: [],
-        dinner: [],
-        totalKcal: breakfast.reduce((s, r) => s + (r.totalKcal || 0), 0),
-      };
-    }
-    if (slot === "lunch") {
-      return {
-        date: todayStr,
-        hasPlan: false,
-        breakfast: [],
         lunch,
-        dinner: [],
-        totalKcal: lunch.reduce((s, r) => s + (r.totalKcal || 0), 0),
+        dinner,
+        totalKcal,
       };
-    }
-    if (slot === "dinner") {
+    } catch (error) {
+      // Nếu suggestMenu fail, trả về empty response thay vì throw error
+      this.logger.error("Error in getTodaySuggest:", error);
       return {
         date: todayStr,
         hasPlan: false,
         breakfast: [],
         lunch: [],
-        dinner,
-        totalKcal: dinner.reduce((s, r) => s + (r.totalKcal || 0), 0),
+        dinner: [],
+        totalKcal: 0,
       };
     }
-
-    return {
-      date: todayStr,
-      hasPlan: false,
-      breakfast,
-      lunch,
-      dinner,
-      totalKcal,
-    };
   }
 
   private async ensureDailyIngredientPrices(ingredientIds: string[]) {
@@ -1199,9 +1222,12 @@ export class MealPlanService {
         }),
       );
     } catch (error) {
+      // Sau khi retry vẫn lỗi -> không cập nhật giá, để "Theo Thời giá"
       this.logger.warn(
-        `Không thể cập nhật giá nguyên liệu: ${error?.message || error}`,
+        `Không thể cập nhật giá nguyên liệu sau khi retry: ${error?.message || error}. Giữ nguyên giá cũ hoặc để "Theo Thời giá".`,
       );
+      // Không cập nhật pricePerUnit, priceCurrency, priceUpdatedAt
+      // Giữ nguyên giá cũ hoặc null (sẽ hiển thị "Theo Thời giá" ở frontend)
     }
   }
 
