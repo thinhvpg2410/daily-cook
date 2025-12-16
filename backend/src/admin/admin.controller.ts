@@ -8,6 +8,7 @@ import {
   Query,
   Body,
   UseGuards,
+  Logger,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
 import { AdminService } from "./admin.service";
@@ -21,13 +22,20 @@ import { Roles } from "../common/decorators/roles.decorator";
 @Roles("ADMIN")
 @ApiBearerAuth("JWT-auth")
 export class AdminController {
+  private readonly logger = new Logger(AdminController.name);
+
   constructor(private readonly adminService: AdminService) {}
 
   @Get("stats")
   @ApiOperation({ summary: "Lấy thống kê tổng quan" })
   @ApiResponse({ status: 200, description: "Thống kê tổng quan" })
-  getStats() {
-    return this.adminService.getStats();
+  async getStats() {
+    try {
+      return await this.adminService.getStats();
+    } catch (error: any) {
+      this.logger.error("Error in getStats:", error);
+      throw error;
+    }
   }
 
   @Get("users")
@@ -36,8 +44,18 @@ export class AdminController {
   @ApiQuery({ name: "limit", required: false, type: Number })
   @ApiQuery({ name: "search", required: false, type: String })
   @ApiResponse({ status: 200, description: "Danh sách người dùng" })
-  getUsers(@Query() params: { page?: number; limit?: number; search?: string }) {
-    return this.adminService.getUsers(params);
+  async getUsers(@Query() params: { page?: number; limit?: number; search?: string }) {
+    try {
+      const parsedParams = {
+        page: params.page ? Number(params.page) : undefined,
+        limit: params.limit ? Number(params.limit) : undefined,
+        search: params.search,
+      };
+      return await this.adminService.getUsers(parsedParams);
+    } catch (error: any) {
+      this.logger.error("Error in getUsers:", error);
+      throw error;
+    }
   }
 
   @Get("users/:id")
@@ -70,8 +88,18 @@ export class AdminController {
   @ApiQuery({ name: "limit", required: false, type: Number })
   @ApiQuery({ name: "search", required: false, type: String })
   @ApiResponse({ status: 200, description: "Danh sách công thức" })
-  getRecipes(@Query() params: { page?: number; limit?: number; search?: string }) {
-    return this.adminService.getRecipes(params);
+  async getRecipes(@Query() params: { page?: number; limit?: number; search?: string }) {
+    try {
+      const parsedParams = {
+        page: params.page ? Number(params.page) : undefined,
+        limit: params.limit ? Number(params.limit) : undefined,
+        search: params.search,
+      };
+      return await this.adminService.getRecipes(parsedParams);
+    } catch (error: any) {
+      this.logger.error("Error in getRecipes:", error);
+      throw error;
+    }
   }
 
   @Get("recipes/:id")
@@ -105,6 +133,13 @@ export class AdminController {
     return this.adminService.deleteRecipe(id);
   }
 
+  @Get("tags")
+  @ApiOperation({ summary: "Lấy danh sách tất cả tags" })
+  @ApiResponse({ status: 200, description: "Danh sách tags" })
+  getAllTags() {
+    return this.adminService.getAllTags();
+  }
+
   @Post("ingredients/:id/fetch-price")
   @ApiOperation({ summary: "Lấy giá nguyên liệu từ thị trường" })
   @ApiResponse({ status: 200, description: "Lấy giá thành công" })
@@ -129,8 +164,18 @@ export class AdminController {
   @ApiQuery({ name: "limit", required: false, type: Number })
   @ApiQuery({ name: "userId", required: false, type: String })
   @ApiResponse({ status: 200, description: "Danh sách nhật ký ăn uống" })
-  getFoodLogs(@Query() params: { page?: number; limit?: number; userId?: string }) {
-    return this.adminService.getFoodLogs(params);
+  async getFoodLogs(@Query() params: { page?: number; limit?: number; userId?: string }) {
+    try {
+      const parsedParams = {
+        page: params.page ? Number(params.page) : undefined,
+        limit: params.limit ? Number(params.limit) : undefined,
+        userId: params.userId,
+      };
+      return await this.adminService.getFoodLogs(parsedParams);
+    } catch (error: any) {
+      this.logger.error("Error in getFoodLogs:", error);
+      throw error;
+    }
   }
 
   @Get("ingredients")
@@ -139,8 +184,18 @@ export class AdminController {
   @ApiQuery({ name: "limit", required: false, type: Number })
   @ApiQuery({ name: "search", required: false, type: String })
   @ApiResponse({ status: 200, description: "Danh sách nguyên liệu" })
-  getIngredients(@Query() params: { page?: number; limit?: number; search?: string }) {
-    return this.adminService.getIngredients(params);
+  async getIngredients(@Query() params: { page?: number; limit?: number; search?: string }) {
+    try {
+      const parsedParams = {
+        page: params.page ? Number(params.page) : undefined,
+        limit: params.limit ? Number(params.limit) : undefined,
+        search: params.search,
+      };
+      return await this.adminService.getIngredients(parsedParams);
+    } catch (error: any) {
+      this.logger.error("Error in getIngredients:", error);
+      throw error;
+    }
   }
 
   @Post("ingredients")

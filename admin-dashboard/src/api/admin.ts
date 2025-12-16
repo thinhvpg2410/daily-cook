@@ -80,6 +80,7 @@ export interface DashboardStats {
   totalFoodLogs: number;
   activeUsers: number;
   recentUsers: User[];
+  recentRecipes?: Recipe[];
 }
 
 export const adminApi = {
@@ -169,6 +170,12 @@ export const adminApi = {
 
   deleteIngredient: async (id: string): Promise<void> => {
     await apiClient.delete(`/admin/ingredients/${id}`);
+  },
+
+  // Tags
+  getAllTags: async (): Promise<string[]> => {
+    const response = await apiClient.get('/admin/tags');
+    return response.data;
   },
 };
 

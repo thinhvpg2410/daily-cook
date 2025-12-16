@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Inject, forwardRef } from "@nestjs/common";
+import { Injectable, NotFoundException, Inject, forwardRef, Optional } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { PriceScraperService } from "../price-scraper/price-scraper.service";
 
@@ -6,76 +6,37 @@ import { PriceScraperService } from "../price-scraper/price-scraper.service";
 export class AdminService {
   constructor(
     private prisma: PrismaService,
+    @Optional()
     @Inject(forwardRef(() => PriceScraperService))
-    private priceScraperService: PriceScraperService,
+    private priceScraperService?: PriceScraperService,
   ) {}
 
   async getStats() {
-    const [totalUsers, totalRecipes, totalMealPlans, totalFoodLogs] = await Promise.all([
-      this.prisma.user.count(),
-      this.prisma.recipe.count(),
-      this.prisma.mealPlan.count(),
-      this.prisma.foodLog.count(),
-    ]);
+    try {
+      const [totalUsers, totalRecipes, totalMealPlans, totalFoodLogs] = await Promise.all([
+        this.prisma.user.count(),
+        this.prisma.recipe.count(),
+        this.prisma.mealPlan.count(),
+        this.prisma.foodLog.count(),
+      ]);
 
-    // Active users: users who have logged in or created content in the last 30 days
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
-    const activeUsers = await this.prisma.user.count({
-      where: {
-        OR: [
-          { createdAt: { gte: thirtyDaysAgo } },
-          { recipes: { some: { createdAt: { gte: thirtyDaysAgo } } } },
-          { mealPlans: { some: { createdAt: { gte: thirtyDaysAgo } } } },
-          { foodLogs: { some: { createdAt: { gte: thirtyDaysAgo } } } },
-        ],
-      },
-    });
+      // Active users: users who have logged in or created content in the last 30 days
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      const activeUsers = await this.prisma.user.count({
+        where: {
+          OR: [
+            { createdAt: { gte: thirtyDaysAgo } },
+            { recipes: { some: { createdAt: { gte: thirtyDaysAgo } } } },
+            { mealPlans: { some: { createdAt: { gte: thirtyDaysAgo } } } },
+            { foodLogs: { some: { createdAt: { gte: thirtyDaysAgo } } } },
+          ],
+        },
+      });
 
-    const recentUsers = await this.prisma.user.findMany({
-      take: 10,
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        phone: true,
-        role: true,
-        createdAt: true,
-      },
-    });
-
-    return {
-      totalUsers,
-      totalRecipes,
-      totalMealPlans,
-      totalFoodLogs,
-      activeUsers,
-      recentUsers,
-    };
-  }
-
-  async getUsers(params: { page?: number; limit?: number; search?: string }) {
-    const page = params.page || 1;
-    const limit = params.limit || 20;
-    const skip = (page - 1) * limit;
-
-    const where: any = {};
-    if (params.search) {
-      where.OR = [
-        { email: { contains: params.search, mode: "insensitive" } },
-        { name: { contains: params.search, mode: "insensitive" } },
-        { phone: { contains: params.search, mode: "insensitive" } },
-      ];
-    }
-
-    const [total, data] = await Promise.all([
-      this.prisma.user.count({ where }),
-      this.prisma.user.findMany({
-        where,
-        skip,
-        take: limit,
+      const recentUsers = await this.prisma.user.findMany({
+        take: 10,
         orderBy: { createdAt: "desc" },
         select: {
           id: true,
@@ -83,15 +44,81 @@ export class AdminService {
           name: true,
           phone: true,
           role: true,
-          avatarUrl: true,
-          isTwoFAEnabled: true,
           createdAt: true,
-          updatedAt: true,
         },
-      }),
-    ]);
+      });
 
-    return { data, total };
+      const recentRecipes = await this.prisma.recipe.findMany({
+        take: 6,
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          title: true,
+          image: true,
+          totalKcal: true,
+          likes: true,
+          region: true,
+          tags: true,
+          createdAt: true,
+        },
+      });
+
+      return {
+        totalUsers,
+        totalRecipes,
+        totalMealPlans,
+        totalFoodLogs,
+        activeUsers,
+        recentUsers,
+        recentRecipes,
+      };
+    } catch (error: any) {
+      console.error("Error getting stats:", error);
+      throw error;
+    }
+  }
+
+  async getUsers(params: { page?: number; limit?: number; search?: string }) {
+    try {
+      const page = params.page || 1;
+      const limit = params.limit || 20;
+      const skip = (page - 1) * limit;
+
+      const where: any = {};
+      if (params.search) {
+        where.OR = [
+          { email: { contains: params.search, mode: "insensitive" } },
+          { name: { contains: params.search, mode: "insensitive" } },
+          { phone: { contains: params.search, mode: "insensitive" } },
+        ];
+      }
+
+      const [total, data] = await Promise.all([
+        this.prisma.user.count({ where }),
+        this.prisma.user.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            phone: true,
+            role: true,
+            avatarUrl: true,
+            isTwoFAEnabled: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        }),
+      ]);
+
+      return { data, total };
+    } catch (error: any) {
+      console.error("Error getting users:", error);
+      throw error;
+    }
   }
 
   async getUser(id: string) {
@@ -210,11 +237,24 @@ export class AdminService {
     let totalFat = 0;
     let totalCarbs = 0;
 
+    if (!items || items.length === 0) {
+      return {
+        totalKcal: 0,
+        protein: 0,
+        fat: 0,
+        carbs: 0,
+      };
+    }
+
     for (const item of items) {
+      if (!item.ingredient) continue;
+      
       const ing = item.ingredient;
-      const amount = item.amount;
-      // Assume ingredient nutrition is per unit (gram/ml)
-      const ratio = amount / 100; // Convert to per 100g/ml
+      const amount = item.amount || 0;
+      if (amount <= 0) continue;
+      
+      // Assume ingredient nutrition is per 100g/ml
+      const ratio = amount / 100;
       
       if (ing.kcal) totalKcal += (ing.kcal * ratio);
       if (ing.protein) totalProtein += (ing.protein * ratio);
@@ -231,40 +271,52 @@ export class AdminService {
   }
 
   async createRecipe(data: any) {
-    // First create recipe with items
-    const recipe = await this.prisma.recipe.create({
-      data: {
-        title: data.title,
-        description: data.description || null,
-        steps: data.steps || [],
-        tags: data.tags || [],
-        image: data.image || null,
-        cookTime: data.cookTime || null,
-        region: data.region || null,
-        authorId: data.authorId || null,
-        items: {
-          create: (data.items || []).map((i: any) => ({
-            ingredientId: i.ingredientId,
-            amount: i.amount,
-            unitOverride: i.unitOverride || null,
-          })),
-        },
-      },
-      include: { items: { include: { ingredient: true } } },
-    });
+    try {
+      if (!data.title) {
+        throw new Error("Title is required");
+      }
 
-    // Calculate nutrition from ingredients
-    const nutrition = this.calculateNutrition(recipe.items);
-    
-    // Update recipe with calculated nutrition
-    return this.prisma.recipe.update({
-      where: { id: recipe.id },
-      data: nutrition,
-      include: {
-        items: { include: { ingredient: true } },
-        author: { select: { id: true, name: true, email: true } },
-      },
-    });
+      // Filter valid items
+      const itemsToCreate = (data.items || []).filter((i: any) => i.ingredientId && i.amount > 0);
+      
+      // First create recipe with items
+      const recipe = await this.prisma.recipe.create({
+        data: {
+          title: data.title,
+          description: data.description || null,
+          steps: Array.isArray(data.steps) ? data.steps : [],
+          tags: Array.isArray(data.tags) ? data.tags : [],
+          image: data.image || null,
+          cookTime: data.cookTime || null,
+          region: data.region || null,
+          authorId: data.authorId || null,
+          items: itemsToCreate.length > 0 ? {
+            create: itemsToCreate.map((i: any) => ({
+              ingredientId: i.ingredientId,
+              amount: i.amount,
+              unitOverride: i.unitOverride || null,
+            })),
+          } : undefined,
+        },
+        include: { items: { include: { ingredient: true } } },
+      });
+
+      // Calculate nutrition from ingredients
+      const nutrition = this.calculateNutrition(recipe.items || []);
+      
+      // Update recipe with calculated nutrition
+      return this.prisma.recipe.update({
+        where: { id: recipe.id },
+        data: nutrition,
+        include: {
+          items: { include: { ingredient: true } },
+          author: { select: { id: true, name: true, email: true } },
+        },
+      });
+    } catch (error: any) {
+      console.error("Error creating recipe:", error);
+      throw error;
+    }
   }
 
   async updateRecipe(id: string, data: any) {
@@ -282,30 +334,33 @@ export class AdminService {
       where: { recipeId: id },
     });
 
+    // Filter valid items
+    const itemsToCreate = (data.items || []).filter((i: any) => i.ingredientId && i.amount > 0);
+
     // Update recipe and create new items
     const updated = await this.prisma.recipe.update({
       where: { id },
       data: {
         title: data.title,
-        description: data.description,
-        steps: data.steps,
-        tags: data.tags,
-        image: data.image,
-        cookTime: data.cookTime,
-        region: data.region,
-        items: {
-          create: (data.items || []).map((i: any) => ({
+        description: data.description || null,
+        steps: Array.isArray(data.steps) ? data.steps : [],
+        tags: Array.isArray(data.tags) ? data.tags : [],
+        image: data.image || null,
+        cookTime: data.cookTime || null,
+        region: data.region || null,
+        items: itemsToCreate.length > 0 ? {
+          create: itemsToCreate.map((i: any) => ({
             ingredientId: i.ingredientId,
             amount: i.amount,
             unitOverride: i.unitOverride || null,
           })),
-        },
+        } : undefined,
       },
       include: { items: { include: { ingredient: true } } },
     });
 
     // Calculate nutrition from ingredients
-    const nutrition = this.calculateNutrition(updated.items);
+    const nutrition = this.calculateNutrition(updated.items || []);
     
     // Update recipe with calculated nutrition
     return this.prisma.recipe.update({
@@ -318,6 +373,31 @@ export class AdminService {
     });
   }
 
+  async getAllTags() {
+    try {
+      const recipes = await this.prisma.recipe.findMany({
+        select: { tags: true },
+      });
+      
+      // Collect all unique tags
+      const allTags = new Set<string>();
+      recipes.forEach(recipe => {
+        if (Array.isArray(recipe.tags)) {
+          recipe.tags.forEach(tag => {
+            if (tag && typeof tag === 'string') {
+              allTags.add(tag);
+            }
+          });
+        }
+      });
+      
+      return Array.from(allTags).sort();
+    } catch (error: any) {
+      console.error("Error getting tags:", error);
+      throw error;
+    }
+  }
+
   async fetchIngredientPrice(ingredientId: string) {
     const ingredient = await this.prisma.ingredient.findUnique({
       where: { id: ingredientId },
@@ -327,20 +407,34 @@ export class AdminService {
       throw new NotFoundException("Ingredient not found");
     }
 
+    // If price scraper service is not available, return current price
+    if (!this.priceScraperService) {
+      return {
+        id: ingredient.id,
+        name: ingredient.name,
+        pricePerUnit: ingredient.pricePerUnit,
+        priceCurrency: ingredient.priceCurrency,
+        priceUpdatedAt: ingredient.priceUpdatedAt,
+        message: "Price scraper service not available",
+      };
+    }
+
     try {
       // Try to scrape price from market
       const prices = await this.priceScraperService.scrapePrices([
         { name: ingredient.name, unit: ingredient.unit || undefined },
       ]);
 
-      const priceData = prices[ingredient.name.trim().toLowerCase()];
-      if (priceData) {
+      const normalizedName = ingredient.name.trim().toLowerCase();
+      const priceData = prices[normalizedName];
+      
+      if (priceData && priceData.pricePerUnit) {
         // Update ingredient with new price
         const updated = await this.prisma.ingredient.update({
           where: { id: ingredientId },
           data: {
             pricePerUnit: priceData.pricePerUnit,
-            priceCurrency: priceData.currency,
+            priceCurrency: priceData.currency || 'VND',
             priceUpdatedAt: new Date(),
           },
         });
@@ -351,12 +445,12 @@ export class AdminService {
           pricePerUnit: updated.pricePerUnit,
           priceCurrency: updated.priceCurrency,
           priceUpdatedAt: updated.priceUpdatedAt,
-          source: priceData.source,
+          source: priceData.source || 'market',
         };
       }
-    } catch (error) {
+    } catch (error: any) {
       // If scraping fails, return current price
-      console.error("Failed to scrape price:", error);
+      console.error("Failed to scrape price:", error?.message || error);
     }
 
     // Return current price if scraping failed
@@ -370,49 +464,59 @@ export class AdminService {
   }
 
   async getMealPlans(params: { page?: number; limit?: number; userId?: string }) {
-    const page = params.page || 1;
-    const limit = params.limit || 20;
-    const skip = (page - 1) * limit;
+    try {
+      const page = params.page || 1;
+      const limit = params.limit || 20;
+      const skip = (page - 1) * limit;
 
-    const where: any = {};
-    if (params.userId) {
-      where.userId = params.userId;
+      const where: any = {};
+      if (params.userId) {
+        where.userId = params.userId;
+      }
+
+      const [total, data] = await Promise.all([
+        this.prisma.mealPlan.count({ where }),
+        this.prisma.mealPlan.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { createdAt: "desc" },
+        }),
+      ]);
+
+      return { data, total };
+    } catch (error: any) {
+      console.error("Error getting meal plans:", error);
+      throw error;
     }
-
-    const [total, data] = await Promise.all([
-      this.prisma.mealPlan.count({ where }),
-      this.prisma.mealPlan.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: "desc" },
-      }),
-    ]);
-
-    return { data, total };
   }
 
   async getFoodLogs(params: { page?: number; limit?: number; userId?: string }) {
-    const page = params.page || 1;
-    const limit = params.limit || 20;
-    const skip = (page - 1) * limit;
+    try {
+      const page = params.page || 1;
+      const limit = params.limit || 20;
+      const skip = (page - 1) * limit;
 
-    const where: any = {};
-    if (params.userId) {
-      where.userId = params.userId;
+      const where: any = {};
+      if (params.userId) {
+        where.userId = params.userId;
+      }
+
+      const [total, data] = await Promise.all([
+        this.prisma.foodLog.count({ where }),
+        this.prisma.foodLog.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { createdAt: "desc" },
+        }),
+      ]);
+
+      return { data, total };
+    } catch (error: any) {
+      console.error("Error getting food logs:", error);
+      throw error;
     }
-
-    const [total, data] = await Promise.all([
-      this.prisma.foodLog.count({ where }),
-      this.prisma.foodLog.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: "desc" },
-      }),
-    ]);
-
-    return { data, total };
   }
 
   async getIngredients(params: { page?: number; limit?: number; search?: string }) {
