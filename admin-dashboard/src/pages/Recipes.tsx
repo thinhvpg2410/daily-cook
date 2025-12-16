@@ -3,6 +3,22 @@ import { adminApi } from '../api/admin';
 import type { Recipe } from '../api/admin';
 import RecipeForm from '../components/RecipeForm';
 
+// Helper function to convert units to grams
+// 1 tbsp = 15g, 1 tsp = 5g
+const convertToGrams = (amount: number, unit?: string): number => {
+  if (!unit) return amount;
+  const unitLower = unit.toLowerCase().trim();
+  
+  if (unitLower === 'tbsp' || unitLower === 'tablespoon' || unitLower === 'tablespoons') {
+    return amount * 15;
+  }
+  if (unitLower === 'tsp' || unitLower === 'teaspoon' || unitLower === 'teaspoons') {
+    return amount * 5;
+  }
+  // If unit is already in grams or other units, return as is
+  return amount;
+};
+
 export default function Recipes() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
@@ -647,12 +663,15 @@ function RecipeDetailModal({ recipe, onClose, onEdit }: { recipe: any; onClose: 
                 {recipe.items.map((item: any, idx: number) => {
                   const ingredient = item.ingredient;
                   const amount = item.amount || 0;
+                  const unit = item.unitOverride || ingredient?.unit || 'g';
+                  // Convert to grams if unit is tbsp/tsp
+                  const amountInGrams = convertToGrams(amount, unit);
                   return (
                     <div key={idx} style={{ padding: '0.75rem 0', borderBottom: idx < recipe.items.length - 1 ? '1px solid #e5e7eb' : 'none' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontWeight: '500' }}>{ingredient?.name || 'Unknown'}</span>
                         <span style={{ color: '#6b7280' }}>
-                          {amount} {item.unitOverride || ingredient?.unit || 'g'}
+                          {amount} {unit}
                         </span>
                       </div>
                       {ingredient && amount > 0 && (
@@ -663,10 +682,10 @@ function RecipeDetailModal({ recipe, onClose, onEdit }: { recipe: any; onClose: 
                           paddingLeft: '0.5rem',
                           fontStyle: 'italic'
                         }}>
-                          Dinh dưỡng: Kcal: {Math.round((ingredient.kcal || 0) * (amount / 100))} | 
-                          P: {Math.round((ingredient.protein || 0) * (amount / 100))}g | 
-                          F: {Math.round((ingredient.fat || 0) * (amount / 100))}g | 
-                          C: {Math.round((ingredient.carbs || 0) * (amount / 100))}g
+                          Dinh dưỡng: Kcal: {Math.round((ingredient.kcal || 0) * (amountInGrams / 100))} | 
+                          P: {Math.round((ingredient.protein || 0) * (amountInGrams / 100))}g | 
+                          F: {Math.round((ingredient.fat || 0) * (amountInGrams / 100))}g | 
+                          C: {Math.round((ingredient.carbs || 0) * (amountInGrams / 100))}g
                         </div>
                       )}
                     </div>

@@ -12,6 +12,22 @@ const MEAL_TIME_TAGS = ['Sáng', 'Trưa', 'Chiều', 'Tối'];
 const REGION_TAGS = ['Miền Bắc', 'Miền Trung', 'Miền Nam'];
 const DIET_TAGS = ['Chay', 'Mặn', 'Thuần chay'];
 
+// Helper function to convert units to grams
+// 1 tbsp = 15g, 1 tsp = 5g
+const convertToGrams = (amount: number, unit?: string): number => {
+  if (!unit) return amount;
+  const unitLower = unit.toLowerCase().trim();
+  
+  if (unitLower === 'tbsp' || unitLower === 'tablespoon' || unitLower === 'tablespoons') {
+    return amount * 15;
+  }
+  if (unitLower === 'tsp' || unitLower === 'teaspoon' || unitLower === 'teaspoons') {
+    return amount * 5;
+  }
+  // If unit is already in grams or other units, return as is
+  return amount;
+};
+
 export default function RecipeForm({ recipe, onClose, onSave }: RecipeFormProps) {
   const [formData, setFormData] = useState({
     title: recipe?.title || '',
@@ -137,7 +153,10 @@ export default function RecipeForm({ recipe, onClose, onSave }: RecipeFormProps)
     formData.items.forEach(item => {
       const ingredient = ingredients.find(ing => ing.id === item.ingredientId);
       if (ingredient) {
-        const ratio = item.amount / 100; // per 100g/ml
+        // Convert to grams if unit is tbsp/tsp
+        const unit = item.unitOverride || ingredient.unit || 'g';
+        const amountInGrams = convertToGrams(item.amount, unit);
+        const ratio = amountInGrams / 100; // per 100g/ml
         if (ingredient.kcal) totalKcal += ingredient.kcal * ratio;
         if (ingredient.protein) totalProtein += ingredient.protein * ratio;
         if (ingredient.fat) totalFat += ingredient.fat * ratio;
@@ -459,7 +478,10 @@ export default function RecipeForm({ recipe, onClose, onSave }: RecipeFormProps)
                 if (!ingredient || amount <= 0) {
                   return { kcal: 0, protein: 0, fat: 0, carbs: 0 };
                 }
-                const ratio = amount / 100; // per 100g/ml
+                // Convert to grams if unit is tbsp/tsp
+                const unit = item.unitOverride || ingredient.unit || 'g';
+                const amountInGrams = convertToGrams(amount, unit);
+                const ratio = amountInGrams / 100; // per 100g/ml
                 return {
                   kcal: (ingredient.kcal || 0) * ratio,
                   protein: (ingredient.protein || 0) * ratio,
