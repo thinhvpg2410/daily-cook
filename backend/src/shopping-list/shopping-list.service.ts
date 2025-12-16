@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { AIService } from "../ai/ai.service";
+import { PriceScraperService } from "../price-scraper/price-scraper.service";
 import { startOfDay } from "date-fns";
 
 @Injectable()
@@ -10,19 +11,17 @@ export class ShoppingListService {
   constructor(
     private prisma: PrismaService,
     private aiService: AIService,
+    private priceScraperService: PriceScraperService,
   ) {}
 
   private async ensureDailyIngredientPrices(ingredientIds: string[]) {
-    if (!ingredientIds.length || !this.aiService.isEnabled()) return;
+    if (!ingredientIds.length) return;
     const todayStart = startOfDay(new Date());
 
     const pending = await this.prisma.ingredient.findMany({
       where: {
         id: { in: ingredientIds },
-        OR: [
-          { priceUpdatedAt: null },
-          { priceUpdatedAt: { lt: todayStart } },
-        ],
+        OR: [{ priceUpdatedAt: null }, { priceUpdatedAt: { lt: todayStart } }],
       },
       select: { id: true, name: true, unit: true },
     });
@@ -30,9 +29,32 @@ export class ShoppingListService {
     if (!pending.length) return;
 
     try {
-      const priceMap = await this.aiService.fetchIngredientMarketPrices(
+      // Try to use price scraper first (Bách Hóa Xanh)
+      const priceMap = await this.priceScraperService.scrapePrices(
         pending.map((p) => ({ name: p.name, unit: p.unit || undefined })),
       );
+
+      // If price scraper didn't find all prices, fallback to AI service
+      const missingPrices = pending.filter(
+        (ing) => !priceMap[ing.name.trim().toLowerCase()],
+      );
+
+      if (missingPrices.length > 0 && this.aiService.isEnabled()) {
+        this.logger.log(
+          `Price scraper found ${Object.keys(priceMap).length}/${pending.length} prices. Trying AI service for ${missingPrices.length} missing prices.`,
+        );
+        try {
+          const aiPriceMap = await this.aiService.fetchIngredientMarketPrices(
+            missingPrices.map((p) => ({ name: p.name, unit: p.unit || undefined })),
+          );
+          // Merge AI prices into price map
+          Object.assign(priceMap, aiPriceMap);
+        } catch (aiError) {
+          this.logger.warn(
+            `AI service failed to fetch prices: ${aiError?.message || aiError}`,
+          );
+        }
+      }
 
       await Promise.all(
         pending.map(async (ing) => {
@@ -93,9 +115,7 @@ export class ShoppingListService {
     return items.map((item) => {
       const price = priceById.get(item.ingredientId);
       if (!price?.pricePerUnit) return item;
-      const estimatedCost = Number(
-        (price.pricePerUnit * item.qty).toFixed(2),
-      );
+      const estimatedCost = Number((price.pricePerUnit * item.qty).toFixed(2));
       return {
         ...item,
         unitPrice: price.pricePerUnit,

@@ -259,7 +259,7 @@ export class MealPlanService {
   async upsert(userId: string, dto: CreateMealPlanDto) {
     console.log({
       dto,
-    })
+    });
     const date = this.asDate(dto.date);
     const exists = await this.prisma.mealPlan.findFirst({
       where: { userId, date },
@@ -275,7 +275,7 @@ export class MealPlanService {
 
     console.log({
       recipeIds,
-    })
+    });
     if (recipeIds.length > 0) {
       const uniqueIds = [...new Set(recipeIds)]; // Remove duplicates
       const cnt = await this.prisma.recipe.count({
@@ -283,7 +283,7 @@ export class MealPlanService {
       });
       if (cnt !== uniqueIds.length) {
         throw new BadRequestException(
-          `Một hoặc nhiều công thức không tồn tại. Đã tìm thấy ${cnt}/${uniqueIds.length} công thức hợp lệ.`
+          `Một hoặc nhiều công thức không tồn tại. Đã tìm thấy ${cnt}/${uniqueIds.length} công thức hợp lệ.`,
         );
       }
     }
@@ -308,7 +308,7 @@ export class MealPlanService {
   async update(userId: string, id: string, dto: UpdateMealPlanDto) {
     const r = await this.findOne(userId, id);
     const slots = dto.slots ? this.normalizeSlots(dto.slots) : (r.slots as any);
-    
+
     // Validate recipe IDs if slots are provided
     if (dto.slots) {
       const recipeIds = [
@@ -323,12 +323,12 @@ export class MealPlanService {
         });
         if (cnt !== uniqueIds.length) {
           throw new BadRequestException(
-            `Một hoặc nhiều công thức không tồn tại. Đã tìm thấy ${cnt}/${uniqueIds.length} công thức hợp lệ.`
+            `Một hoặc nhiều công thức không tồn tại. Đã tìm thấy ${cnt}/${uniqueIds.length} công thức hợp lệ.`,
           );
         }
       }
     }
-    
+
     return this.prisma.mealPlan.update({
       where: { id: r.id },
       data: { note: dto.note ?? r.note, slots },
@@ -356,7 +356,7 @@ export class MealPlanService {
         });
         if (cnt !== uniqueIds.length) {
           throw new BadRequestException(
-            `Một hoặc nhiều công thức không tồn tại. Đã tìm thấy ${cnt}/${uniqueIds.length} công thức hợp lệ.`
+            `Một hoặc nhiều công thức không tồn tại. Đã tìm thấy ${cnt}/${uniqueIds.length} công thức hợp lệ.`,
           );
         }
       }
@@ -366,7 +366,7 @@ export class MealPlanService {
       // Kiểm tra xem có ít nhất một trong add/remove không
       if (!dto.add && !dto.remove) {
         throw new BadRequestException(
-          "Phải cung cấp ít nhất một trong các tham số: set, add, hoặc remove."
+          "Phải cung cấp ít nhất một trong các tham số: set, add, hoặc remove.",
         );
       }
 
@@ -377,37 +377,41 @@ export class MealPlanService {
           where: { id: dto.add },
         });
         if (!exists) {
-          throw new BadRequestException(`Công thức với ID "${dto.add}" không tồn tại.`);
+          throw new BadRequestException(
+            `Công thức với ID "${dto.add}" không tồn tại.`,
+          );
         }
         if (current.has(dto.add)) {
-          throw new BadRequestException(`Công thức này đã có trong ${dto.slot}.`);
+          throw new BadRequestException(
+            `Công thức này đã có trong ${dto.slot}.`,
+          );
         }
         current.add(dto.add);
       }
-      
+
       if (dto.remove) {
         // Kiểm tra sau khi xử lý add (nếu có) để đảm bảo current đã được cập nhật
         const removeId = String(dto.remove).trim();
-        
+
         // Tìm ID trong current (có thể có vấn đề về type hoặc format)
         // Chuyển tất cả ID trong current thành string để so sánh
-        const currentIds = Array.from(current).map(id => String(id).trim());
-        const foundIndex = currentIds.findIndex(id => id === removeId);
-        
+        const currentIds = Array.from(current).map((id) => String(id).trim());
+        const foundIndex = currentIds.findIndex((id) => id === removeId);
+
         if (foundIndex === -1) {
           this.logger.warn(
-            `Attempted to remove recipe ${removeId} from ${dto.slot}, but it's not in current slot. Current: ${currentIds.join(', ')}`
+            `Attempted to remove recipe ${removeId} from ${dto.slot}, but it's not in current slot. Current: ${currentIds.join(", ")}`,
           );
           throw new BadRequestException(
-            `Công thức này không có trong ${dto.slot}. Không thể xóa.`
+            `Công thức này không có trong ${dto.slot}. Không thể xóa.`,
           );
         }
-        
+
         // Xóa bằng cách tìm ID gốc trong Set
         const originalId = Array.from(current)[foundIndex];
         current.delete(originalId);
       }
-      
+
       // Cập nhật slots sau khi xử lý tất cả add/remove
       slots[dto.slot] = Array.from(current);
     }
@@ -619,21 +623,15 @@ export class MealPlanService {
       const lowerTags = tags.map((t) => t.toLowerCase());
 
       if (
-        lowerTags.some((t) =>
-          ["breakfast", "salad", "pickle"].includes(t),
-        ) ||
+        lowerTags.some((t) => ["breakfast", "salad", "pickle"].includes(t)) ||
         (lowerTags.includes("soup") && recipes.length <= 3)
       ) {
         breakfastRecipes.push(recipe.id);
       } else if (lowerTags.includes("soup")) {
         soupRecipes.push(recipe.id);
-      } else if (
-        lowerTags.some((t) => ["veggie", "stirfry"].includes(t))
-      ) {
+      } else if (lowerTags.some((t) => ["veggie", "stirfry"].includes(t))) {
         veggieRecipes.push(recipe.id);
-      } else if (
-        lowerTags.some((t) => ["dessert", "drinks"].includes(t))
-      ) {
+      } else if (lowerTags.some((t) => ["dessert", "drinks"].includes(t))) {
         dessertRecipes.push(recipe.id);
       } else {
         mainRecipes.push(recipe.id);
@@ -693,7 +691,7 @@ export class MealPlanService {
 
     // Determine base blocks based on recipe count
     let baseBlocks: { key: string; tags: string[]; count: number }[] = [];
-    
+
     if (recipeCount && recipeCount > 0) {
       // Custom recipe count: adjust blocks accordingly
       if (recipeCount <= 3) {
@@ -701,21 +699,37 @@ export class MealPlanService {
         baseBlocks = [
           { key: "main", tags: ["RiceSide", "Grilled", "Stew"], count: 1 },
           { key: "soup", tags: ["Soup"], count: recipeCount >= 2 ? 1 : 0 },
-          { key: "veg", tags: ["Veggie", "StirFry"], count: recipeCount >= 3 ? 1 : 0 },
+          {
+            key: "veg",
+            tags: ["Veggie", "StirFry"],
+            count: recipeCount >= 3 ? 1 : 0,
+          },
         ];
       } else if (recipeCount <= 5) {
         // Medium count: main + soup + veg
         baseBlocks = [
           { key: "main", tags: ["RiceSide", "Grilled", "Stew"], count: 1 },
           { key: "soup", tags: ["Soup"], count: 1 },
-          { key: "veg", tags: ["Veggie", "StirFry"], count: recipeCount >= 4 ? 1 : 0 },
+          {
+            key: "veg",
+            tags: ["Veggie", "StirFry"],
+            count: recipeCount >= 4 ? 1 : 0,
+          },
         ];
       } else {
         // Large count: main + soup + veg + extras
         baseBlocks = [
-          { key: "main", tags: ["RiceSide", "Grilled", "Stew"], count: Math.min(2, Math.ceil(recipeCount / 3)) },
+          {
+            key: "main",
+            tags: ["RiceSide", "Grilled", "Stew"],
+            count: Math.min(2, Math.ceil(recipeCount / 3)),
+          },
           { key: "soup", tags: ["Soup"], count: 1 },
-          { key: "veg", tags: ["Veggie", "StirFry"], count: Math.min(2, Math.ceil(recipeCount / 3)) },
+          {
+            key: "veg",
+            tags: ["Veggie", "StirFry"],
+            count: Math.min(2, Math.ceil(recipeCount / 3)),
+          },
         ];
       }
     } else {
@@ -731,13 +745,19 @@ export class MealPlanService {
     const blocks = baseBlocks.filter((b) => b.count > 0);
 
     // Add optional blocks
-    if (dto.includeStarter && (!recipeCount || blocks.reduce((s, b) => s + b.count, 0) < recipeCount))
+    if (
+      dto.includeStarter &&
+      (!recipeCount || blocks.reduce((s, b) => s + b.count, 0) < recipeCount)
+    )
       (blocks as any).push({
         key: "starter",
         tags: ["Salad", "Pickle"],
         count: 1,
       });
-    if (dto.includeDessert && (!recipeCount || blocks.reduce((s, b) => s + b.count, 0) < recipeCount))
+    if (
+      dto.includeDessert &&
+      (!recipeCount || blocks.reduce((s, b) => s + b.count, 0) < recipeCount)
+    )
       (blocks as any).push({
         key: "dessert",
         tags: ["Dessert", "Drinks"],
@@ -800,16 +820,18 @@ export class MealPlanService {
 
     // Calculate total calories and filter if exceeds daily target
     let totalKcal = result.reduce((sum, r) => sum + (r.totalKcal || 0), 0);
-    
+
     // If total calories exceed daily target, try to replace with lower calorie options
     if (totalKcal > dailyKcalTarget) {
       // Sort recipes by calories (descending) to identify high-calorie ones
-      const sortedResults = [...result].sort((a, b) => (b.totalKcal || 0) - (a.totalKcal || 0));
-      
+      const sortedResults = [...result].sort(
+        (a, b) => (b.totalKcal || 0) - (a.totalKcal || 0),
+      );
+
       // Try to replace high-calorie recipes with lower-calorie alternatives
       for (const highCalRecipe of sortedResults) {
         if (totalKcal <= dailyKcalTarget * 0.95) break; // Stop if we're close to target (95%)
-        
+
         // Find which block this recipe belongs to
         let blockKey: string | null = null;
         for (const b of blocks as any[]) {
@@ -818,18 +840,23 @@ export class MealPlanService {
             break;
           }
         }
-        
+
         if (!blockKey) continue;
-        
+
         // Try to find a lower-calorie alternative from the same pool
         const alternatives = pools[blockKey]
-          .filter((alt) => alt.id !== highCalRecipe.id && (alt.totalKcal || 0) < (highCalRecipe.totalKcal || 0))
+          .filter(
+            (alt) =>
+              alt.id !== highCalRecipe.id &&
+              (alt.totalKcal || 0) < (highCalRecipe.totalKcal || 0),
+          )
           .sort((a, b) => (a.totalKcal || 0) - (b.totalKcal || 0));
-        
+
         if (alternatives.length > 0) {
           const replacement = alternatives[0];
-          const calorieDiff = (highCalRecipe.totalKcal || 0) - (replacement.totalKcal || 0);
-          
+          const calorieDiff =
+            (highCalRecipe.totalKcal || 0) - (replacement.totalKcal || 0);
+
           // Replace if it helps
           if (calorieDiff > 0) {
             const index = result.findIndex((r) => r.id === highCalRecipe.id);
@@ -848,29 +875,31 @@ export class MealPlanService {
           }
         }
       }
-      
+
       // If still exceeds, remove highest calorie items (starting with dessert/starter if exists)
       if (totalKcal > dailyKcalTarget) {
         const toRemove: string[] = [];
         let remainingKcal = totalKcal;
-        
+
         // Priority: remove dessert/starter first, then highest calorie items
-        const sortedByCal = [...result].sort((a, b) => (b.totalKcal || 0) - (a.totalKcal || 0));
-        
+        const sortedByCal = [...result].sort(
+          (a, b) => (b.totalKcal || 0) - (a.totalKcal || 0),
+        );
+
         for (const recipe of sortedByCal) {
           if (remainingKcal <= dailyKcalTarget * 0.98) break; // Stop at 98% of target
-          
+
           // Check if it's dessert/starter
-          const isDessertStarter = recipe.tags.some((t: string) => 
-            ["Dessert", "Drinks", "Salad", "Pickle"].includes(t)
+          const isDessertStarter = recipe.tags.some((t: string) =>
+            ["Dessert", "Drinks", "Salad", "Pickle"].includes(t),
           );
-          
+
           if (isDessertStarter || toRemove.length === 0) {
             toRemove.push(recipe.id);
-            remainingKcal -= (recipe.totalKcal || 0);
+            remainingKcal -= recipe.totalKcal || 0;
           }
         }
-        
+
         result = result.filter((r) => !toRemove.includes(r.id));
         totalKcal = result.reduce((sum, r) => sum + (r.totalKcal || 0), 0);
       }
@@ -886,13 +915,13 @@ export class MealPlanService {
         // Try to add more recipes if we have less than requested
         const currentIds = new Set(result.map((r) => r.id));
         const additional: any[] = [];
-        
+
         for (const b of blocks as any[]) {
           if (result.length + additional.length >= recipeCount) break;
           const available = pools[b.key]
             .filter((r: any) => !currentIds.has(r.id))
             .slice(0, recipeCount - result.length - additional.length);
-          
+
           if (available.length > 0) {
             const fetched = await this.prisma.recipe.findMany({
               where: { id: { in: available.map((r: any) => r.id) } },
@@ -906,7 +935,7 @@ export class MealPlanService {
                 totalKcal: true,
               },
             });
-            
+
             // Filter by diet/eat-clean mode if needed
             let filtered = fetched;
             if (isDietMode) {
@@ -916,14 +945,16 @@ export class MealPlanService {
             }
             if (isEatClean) {
               filtered = filtered.filter((r) =>
-                r.tags.some((t: string) => ["Healthy", "Steamed", "Grilled", "Veggie"].includes(t))
+                r.tags.some((t: string) =>
+                  ["Healthy", "Steamed", "Grilled", "Veggie"].includes(t),
+                ),
               );
             }
-            
+
             additional.push(...filtered);
           }
         }
-        
+
         if (additional.length > 0) {
           result = [...result, ...additional].slice(0, recipeCount);
           totalKcal = result.reduce((sum, r) => sum + (r.totalKcal || 0), 0);
@@ -936,8 +967,10 @@ export class MealPlanService {
       const exists = await this.prisma.mealPlan.findFirst({
         where: { userId, date },
       });
-      
-      const slots: Slots = exists ? (exists.slots as any as Slots) : { breakfast: [], lunch: [], dinner: [] };
+
+      const slots: Slots = exists
+        ? (exists.slots as any as Slots)
+        : { breakfast: [], lunch: [], dinner: [] };
       const ids = result.map((r) => r.id);
 
       if (dto.slot === "all") {
@@ -963,7 +996,10 @@ export class MealPlanService {
     }
 
     // Recalculate total calories after filtering
-    const finalTotalKcal = result.reduce((sum, r) => sum + (r.totalKcal || 0), 0);
+    const finalTotalKcal = result.reduce(
+      (sum, r) => sum + (r.totalKcal || 0),
+      0,
+    );
 
     return {
       date: date.toISOString().slice(0, 10),
@@ -1014,9 +1050,7 @@ export class MealPlanService {
         const breakfastRecipes = recipes.filter((r) =>
           slots.breakfast?.includes(r.id),
         );
-        const lunchRecipes = recipes.filter((r) =>
-          slots.lunch?.includes(r.id),
-        );
+        const lunchRecipes = recipes.filter((r) => slots.lunch?.includes(r.id));
         const dinnerRecipes = recipes.filter((r) =>
           slots.dinner?.includes(r.id),
         );
@@ -1069,7 +1103,7 @@ export class MealPlanService {
       );
 
       const allDishes = suggestions.dishes || [];
-      
+
       // Phân bổ vào breakfast/lunch/dinner dựa trên slot
       let breakfast: any[] = [];
       let lunch: any[] = [];
@@ -1088,16 +1122,16 @@ export class MealPlanService {
         // slot === "all": sử dụng logic phân bổ thông minh
         const distributed = this.distributeRecipesToSlots(allDishes);
         const dishMap = new Map(allDishes.map((d) => [d.id, d]));
-        
+
         breakfast = distributed.breakfast
           .map((id) => dishMap.get(id))
-          .filter((d): d is typeof allDishes[0] => d !== undefined);
+          .filter((d): d is (typeof allDishes)[0] => d !== undefined);
         lunch = distributed.lunch
           .map((id) => dishMap.get(id))
-          .filter((d): d is typeof allDishes[0] => d !== undefined);
+          .filter((d): d is (typeof allDishes)[0] => d !== undefined);
         dinner = distributed.dinner
           .map((id) => dishMap.get(id))
-          .filter((d): d is typeof allDishes[0] => d !== undefined);
+          .filter((d): d is (typeof allDishes)[0] => d !== undefined);
       }
 
       // Tính tổng calories (đã được filter bởi suggestMenu)
@@ -1190,10 +1224,7 @@ export class MealPlanService {
     const pending = await this.prisma.ingredient.findMany({
       where: {
         id: { in: ingredientIds },
-        OR: [
-          { priceUpdatedAt: null },
-          { priceUpdatedAt: { lt: todayStart } },
-        ],
+        OR: [{ priceUpdatedAt: null }, { priceUpdatedAt: { lt: todayStart } }],
       },
       select: { id: true, name: true, unit: true },
     });
@@ -1264,9 +1295,7 @@ export class MealPlanService {
     return items.map((item) => {
       const price = priceById.get(item.ingredientId);
       if (!price?.pricePerUnit) return item;
-      const estimatedCost = Number(
-        (price.pricePerUnit * item.qty).toFixed(2),
-      );
+      const estimatedCost = Number((price.pricePerUnit * item.qty).toFixed(2));
       return {
         ...item,
         unitPrice: price.pricePerUnit,

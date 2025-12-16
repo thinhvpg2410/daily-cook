@@ -8,6 +8,8 @@ import { MealPlanModule } from "./mealplan/mealplan.module";
 import { ShoppingListModule } from "./shopping-list/shopping-list.module";
 import { FoodLogModule } from "./food-log/food-log.module";
 import { AIModule } from "./ai/ai.module";
+import { PriceScraperModule } from "./price-scraper/price-scraper.module";
+import { ScheduleModule } from "@nestjs/schedule";
 
 @Module({
   imports: [
@@ -15,6 +17,7 @@ import { AIModule } from "./ai/ai.module";
       isGlobal: true,
       envFilePath: ".env",
     }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     AuthModule,
     UsersModule,
@@ -23,6 +26,7 @@ import { AIModule } from "./ai/ai.module";
     ShoppingListModule,
     FoodLogModule,
     AIModule,
+    PriceScraperModule,
   ],
 })
 export class AppModule {}
