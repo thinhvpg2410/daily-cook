@@ -10,6 +10,7 @@ import { FoodLogModule } from "./food-log/food-log.module";
 import { AIModule } from "./ai/ai.module";
 import { PriceScraperModule } from "./price-scraper/price-scraper.module";
 import { ScheduleModule } from "@nestjs/schedule";
+import { AdminModule } from "./admin/admin.module";
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { ScheduleModule } from "@nestjs/schedule";
     FoodLogModule,
     AIModule,
     PriceScraperModule,
+    AdminModule,
   ],
 })
 export class AppModule {}
