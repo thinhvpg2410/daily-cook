@@ -74,6 +74,19 @@ export class AdminController {
     return this.adminService.updateUserRole(id, body.role);
   }
 
+  @Patch("users/:id")
+  @ApiOperation({ summary: "Cập nhật thông tin người dùng" })
+  @ApiResponse({ status: 200, description: "Cập nhật thành công" })
+  @ApiResponse({ status: 404, description: "Không tìm thấy người dùng" })
+  async updateUser(@Param("id") id: string, @Body() body: any) {
+    try {
+      return await this.adminService.updateUser(id, body);
+    } catch (error: any) {
+      this.logger.error("Error in updateUser:", error);
+      throw error;
+    }
+  }
+
   @Delete("users/:id")
   @ApiOperation({ summary: "Xóa người dùng" })
   @ApiResponse({ status: 200, description: "Xóa thành công" })
@@ -154,8 +167,31 @@ export class AdminController {
   @ApiQuery({ name: "limit", required: false, type: Number })
   @ApiQuery({ name: "userId", required: false, type: String })
   @ApiResponse({ status: 200, description: "Danh sách kế hoạch bữa ăn" })
-  getMealPlans(@Query() params: { page?: number; limit?: number; userId?: string }) {
-    return this.adminService.getMealPlans(params);
+  async getMealPlans(@Query() params: { page?: number; limit?: number; userId?: string }) {
+    try {
+      const parsedParams = {
+        page: params.page ? Number(params.page) : undefined,
+        limit: params.limit ? Number(params.limit) : undefined,
+        userId: params.userId,
+      };
+      return await this.adminService.getMealPlans(parsedParams);
+    } catch (error: any) {
+      this.logger.error("Error in getMealPlans:", error);
+      throw error;
+    }
+  }
+
+  @Get("mealplans/:id")
+  @ApiOperation({ summary: "Lấy chi tiết kế hoạch bữa ăn" })
+  @ApiResponse({ status: 200, description: "Chi tiết kế hoạch bữa ăn" })
+  @ApiResponse({ status: 404, description: "Không tìm thấy kế hoạch bữa ăn" })
+  async getMealPlan(@Param("id") id: string) {
+    try {
+      return await this.adminService.getMealPlan(id);
+    } catch (error: any) {
+      this.logger.error("Error in getMealPlan:", error);
+      throw error;
+    }
   }
 
   @Get("food-logs")

@@ -122,50 +122,210 @@ export class AdminService {
   }
 
   async getUser(id: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        phone: true,
-        role: true,
-        avatarUrl: true,
-        isTwoFAEnabled: true,
-        dob: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          phone: true,
+          role: true,
+          avatarUrl: true,
+          isTwoFAEnabled: true,
+          dob: true,
+          createdAt: true,
+          updatedAt: true,
+          preference: {
+            select: {
+              id: true,
+              gender: true,
+              age: true,
+              height: true,
+              weight: true,
+              activity: true,
+              goal: true,
+              dailyKcalTarget: true,
+              dietType: true,
+              dislikedIngredients: true,
+              likedTags: true,
+              updatedAt: true,
+            },
+          },
+        },
+      });
 
-    if (!user) {
-      throw new NotFoundException("User not found");
+      if (!user) {
+        throw new NotFoundException("User not found");
+      }
+
+      return user;
+    } catch (error: any) {
+      console.error("Error getting user:", error);
+      throw error;
     }
-
-    return user;
   }
 
   async updateUserRole(id: string, role: "USER" | "ADMIN") {
-    const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user) {
-      throw new NotFoundException("User not found");
-    }
+    try {
+      const user = await this.prisma.user.findUnique({ where: { id } });
+      if (!user) {
+        throw new NotFoundException("User not found");
+      }
 
-    return this.prisma.user.update({
-      where: { id },
-      data: { role },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        phone: true,
-        role: true,
-        avatarUrl: true,
-        isTwoFAEnabled: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+      return this.prisma.user.update({
+        where: { id },
+        data: { role },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          phone: true,
+          role: true,
+          avatarUrl: true,
+          isTwoFAEnabled: true,
+          dob: true,
+          createdAt: true,
+          updatedAt: true,
+          preference: {
+            select: {
+              id: true,
+              gender: true,
+              age: true,
+              height: true,
+              weight: true,
+              activity: true,
+              goal: true,
+              dailyKcalTarget: true,
+              dietType: true,
+              dislikedIngredients: true,
+              likedTags: true,
+              updatedAt: true,
+            },
+          },
+        },
+      });
+    } catch (error: any) {
+      console.error("Error updating user role:", error);
+      throw error;
+    }
+  }
+
+  async updateUser(id: string, data: {
+    name?: string;
+    phone?: string;
+    email?: string;
+    dob?: Date | string;
+    avatarUrl?: string;
+    role?: "USER" | "ADMIN";
+    preference?: {
+      gender?: string;
+      age?: number;
+      height?: number;
+      weight?: number;
+      activity?: string;
+      goal?: string;
+      dailyKcalTarget?: number;
+      dietType?: string;
+      dislikedIngredients?: string[];
+      likedTags?: string[];
+    };
+  }) {
+    try {
+      const user = await this.prisma.user.findUnique({ where: { id } });
+      if (!user) {
+        throw new NotFoundException("User not found");
+      }
+
+      const { preference, ...userData } = data;
+
+      // Update user
+      const updatedUser = await this.prisma.user.update({
+        where: { id },
+        data: {
+          ...userData,
+          dob: userData.dob ? new Date(userData.dob) : undefined,
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          phone: true,
+          role: true,
+          avatarUrl: true,
+          isTwoFAEnabled: true,
+          dob: true,
+          createdAt: true,
+          updatedAt: true,
+          preference: {
+            select: {
+              id: true,
+              gender: true,
+              age: true,
+              height: true,
+              weight: true,
+              activity: true,
+              goal: true,
+              dailyKcalTarget: true,
+              dietType: true,
+              dislikedIngredients: true,
+              likedTags: true,
+              updatedAt: true,
+            },
+          },
+        },
+      });
+
+      // Update or create preference
+      if (preference) {
+        await this.prisma.userPreference.upsert({
+          where: { userId: id },
+          create: {
+            userId: id,
+            ...preference,
+          },
+          update: preference,
+        });
+
+        // Fetch updated user with preference
+        return await this.prisma.user.findUnique({
+          where: { id },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            phone: true,
+            role: true,
+            avatarUrl: true,
+            isTwoFAEnabled: true,
+            dob: true,
+            createdAt: true,
+            updatedAt: true,
+            preference: {
+              select: {
+                id: true,
+                gender: true,
+                age: true,
+                height: true,
+                weight: true,
+                activity: true,
+                goal: true,
+                dailyKcalTarget: true,
+                dietType: true,
+                dislikedIngredients: true,
+                likedTags: true,
+                updatedAt: true,
+              },
+            },
+          },
+        });
+      }
+
+      return updatedUser;
+    } catch (error: any) {
+      console.error("Error updating user:", error);
+      throw error;
+    }
   }
 
   async deleteUser(id: string) {
@@ -465,8 +625,8 @@ export class AdminService {
 
   async getMealPlans(params: { page?: number; limit?: number; userId?: string }) {
     try {
-      const page = params.page || 1;
-      const limit = params.limit || 20;
+      const page = params.page ? Number(params.page) : 1;
+      const limit = params.limit ? Number(params.limit) : 20;
       const skip = (page - 1) * limit;
 
       const where: any = {};
@@ -481,6 +641,23 @@ export class AdminService {
           skip,
           take: limit,
           orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            userId: true,
+            date: true,
+            note: true,
+            slots: true,
+            totalKcal: true,
+            createdAt: true,
+            updatedAt: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
         }),
       ]);
 
@@ -491,10 +668,74 @@ export class AdminService {
     }
   }
 
+  async getMealPlan(id: string) {
+    try {
+      const mealPlan = await this.prisma.mealPlan.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          userId: true,
+          date: true,
+          note: true,
+          slots: true,
+          totalKcal: true,
+          createdAt: true,
+          updatedAt: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      });
+
+      if (!mealPlan) {
+        throw new NotFoundException("Meal plan not found");
+      }
+
+      // Fetch recipe details for each slot
+      const slots = mealPlan.slots as any;
+      const recipeIds: string[] = [];
+      
+      if (slots) {
+        if (slots.breakfast) recipeIds.push(...slots.breakfast);
+        if (slots.lunch) recipeIds.push(...slots.lunch);
+        if (slots.dinner) recipeIds.push(...slots.dinner);
+      }
+
+      const recipes = recipeIds.length > 0
+        ? await this.prisma.recipe.findMany({
+            where: { id: { in: recipeIds } },
+            select: {
+              id: true,
+              title: true,
+              image: true,
+              totalKcal: true,
+            },
+          })
+        : [];
+
+      const recipeMap: Record<string, any> = {};
+      recipes.forEach(r => {
+        recipeMap[r.id] = r;
+      });
+
+      return {
+        ...mealPlan,
+        recipes: recipeMap,
+      };
+    } catch (error: any) {
+      console.error("Error getting meal plan:", error);
+      throw error;
+    }
+  }
+
   async getFoodLogs(params: { page?: number; limit?: number; userId?: string }) {
     try {
-      const page = params.page || 1;
-      const limit = params.limit || 20;
+      const page = params.page ? Number(params.page) : 1;
+      const limit = params.limit ? Number(params.limit) : 20;
       const skip = (page - 1) * limit;
 
       const where: any = {};
@@ -509,6 +750,27 @@ export class AdminService {
           skip,
           take: limit,
           orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            userId: true,
+            date: true,
+            mealType: true,
+            recipeId: true,
+            kcal: true,
+            protein: true,
+            fat: true,
+            carbs: true,
+            note: true,
+            createdAt: true,
+            updatedAt: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
         }),
       ]);
 

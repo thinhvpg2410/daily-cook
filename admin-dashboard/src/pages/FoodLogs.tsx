@@ -41,7 +41,8 @@ export default function FoodLogs() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>User ID</th>
+                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>Người dùng</th>
+                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>Email</th>
                   <th style={{ padding: '0.75rem', textAlign: 'left' }}>Ngày</th>
                   <th style={{ padding: '0.75rem', textAlign: 'left' }}>Bữa ăn</th>
                   <th style={{ padding: '0.75rem', textAlign: 'left' }}>Recipe ID</th>
@@ -54,11 +55,21 @@ export default function FoodLogs() {
               <tbody>
                 {foodLogs.map((log) => (
                   <tr key={log.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <td style={{ padding: '0.75rem' }}>{log.userId}</td>
+                    <td style={{ padding: '0.75rem' }}>
+                      {log.user?.name || log.userId}
+                    </td>
+                    <td style={{ padding: '0.75rem' }}>
+                      {log.user?.email || '-'}
+                    </td>
                     <td style={{ padding: '0.75rem' }}>
                       {new Date(log.date).toLocaleDateString('vi-VN')}
                     </td>
-                    <td style={{ padding: '0.75rem' }}>{log.mealType}</td>
+                    <td style={{ padding: '0.75rem' }}>
+                      {log.mealType === 'breakfast' ? 'Sáng' :
+                       log.mealType === 'lunch' ? 'Trưa' :
+                       log.mealType === 'dinner' ? 'Chiều' :
+                       log.mealType === 'snack' ? 'Đồ ăn vặt' : log.mealType}
+                    </td>
                     <td style={{ padding: '0.75rem' }}>{log.recipeId || '-'}</td>
                     <td style={{ padding: '0.75rem' }}>{log.kcal ? Math.round(log.kcal) : '-'}</td>
                     <td style={{ padding: '0.75rem' }}>{log.protein ? Math.round(log.protein) : '-'}</td>
@@ -107,4 +118,3 @@ export default function FoodLogs() {
     </div>
   );
 }
-

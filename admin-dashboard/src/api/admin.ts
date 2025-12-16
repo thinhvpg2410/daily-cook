@@ -1,5 +1,20 @@
 import { apiClient } from './client';
 
+export interface UserPreference {
+  id: string;
+  gender: string | null;
+  age: number | null;
+  height: number | null; // cm
+  weight: number | null; // kg
+  activity: string | null;
+  goal: string | null;
+  dailyKcalTarget: number | null;
+  dietType: string | null;
+  dislikedIngredients: string[];
+  likedTags: string[];
+  updatedAt: string;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -8,6 +23,8 @@ export interface User {
   role: string;
   avatarUrl: string | null;
   isTwoFAEnabled: boolean;
+  dob: string | null;
+  preference: UserPreference | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -39,6 +56,17 @@ export interface MealPlan {
   totalKcal: number | null;
   createdAt: string;
   updatedAt: string;
+  user?: {
+    id: string;
+    name: string | null;
+    email: string;
+  };
+  recipes?: Record<string, {
+    id: string;
+    title: string;
+    image: string | null;
+    totalKcal: number | null;
+  }>;
 }
 
 export interface FoodLog {
@@ -54,6 +82,11 @@ export interface FoodLog {
   note: string | null;
   createdAt: string;
   updatedAt: string;
+  user?: {
+    id: string;
+    name: string | null;
+    email: string;
+  };
 }
 
 export interface Ingredient {
@@ -106,6 +139,30 @@ export const adminApi = {
     return response.data;
   },
 
+  updateUser: async (id: string, data: {
+    name?: string;
+    phone?: string;
+    email?: string;
+    dob?: string;
+    avatarUrl?: string;
+    role?: 'USER' | 'ADMIN';
+    preference?: {
+      gender?: string;
+      age?: number;
+      height?: number;
+      weight?: number;
+      activity?: string;
+      goal?: string;
+      dailyKcalTarget?: number;
+      dietType?: string;
+      dislikedIngredients?: string[];
+      likedTags?: string[];
+    };
+  }): Promise<User> => {
+    const response = await apiClient.patch(`/admin/users/${id}`, data);
+    return response.data;
+  },
+
   deleteUser: async (id: string): Promise<void> => {
     await apiClient.delete(`/admin/users/${id}`);
   },
@@ -143,6 +200,11 @@ export const adminApi = {
   // Meal Plans
   getMealPlans: async (params?: { page?: number; limit?: number; userId?: string }): Promise<{ data: MealPlan[]; total: number }> => {
     const response = await apiClient.get('/admin/mealplans', { params });
+    return response.data;
+  },
+
+  getMealPlan: async (id: string): Promise<MealPlan> => {
+    const response = await apiClient.get(`/admin/mealplans/${id}`);
     return response.data;
   },
 
