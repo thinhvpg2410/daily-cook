@@ -37,6 +37,47 @@ function normalizeImage(src?: string | null) {
 
 const { width } = Dimensions.get("window");
 
+// Helper function to convert units to grams for nutrition calculation
+// Nutrition values in database are per 100g/ml
+const convertToGrams = (amount: number, unit?: string | null): number => {
+  if (!unit) return amount;
+  const unitLower = unit.toLowerCase().trim();
+  
+  if (unitLower === 'tbsp' || unitLower === 'tablespoon' || unitLower === 'tablespoons') {
+    return amount * 15;
+  }
+  if (unitLower === 'tsp' || unitLower === 'teaspoon' || unitLower === 'teaspoons') {
+    return amount * 5;
+  }
+  // For other units like 'cái', 'quả', etc., assume they're already in grams/equivalent
+  // If unit is already in grams or ml, return as is
+  return amount;
+};
+
+// Calculate nutrition for a single ingredient based on amount
+const calculateIngredientNutrition = (
+  amount: number,
+  unitOverride: string | null | undefined,
+  ingredient: {
+    unit?: string | null;
+    kcal?: number | null;
+    protein?: number | null;
+    fat?: number | null;
+    carbs?: number | null;
+  }
+) => {
+  const unit = unitOverride || ingredient.unit || 'g';
+  const amountInGrams = convertToGrams(amount, unit);
+  const ratio = amountInGrams / 100; // nutrition values are per 100g/ml
+  
+  return {
+    kcal: ingredient.kcal ? Math.round(ingredient.kcal * ratio * 10) / 10 : 0,
+    protein: ingredient.protein ? Math.round(ingredient.protein * ratio * 10) / 10 : 0,
+    fat: ingredient.fat ? Math.round(ingredient.fat * ratio * 10) / 10 : 0,
+    carbs: ingredient.carbs ? Math.round(ingredient.carbs * ratio * 10) / 10 : 0,
+  };
+};
+
 type RecipeDetail = {
   id: string;
   title: string;
@@ -55,7 +96,14 @@ type RecipeDetail = {
   items?: {
     amount: number;
     unitOverride?: string | null;
-    ingredient: { name: string; unit?: string | null };
+    ingredient: {
+      name: string;
+      unit?: string | null;
+      kcal?: number | null;
+      protein?: number | null;
+      fat?: number | null;
+      carbs?: number | null;
+    };
   }[];
 };
 
@@ -503,28 +551,60 @@ export default function DetailsScreen({ route, navigation }: any) {
           {detail?.items?.length ? (
             detail.items.map((it, idx) => {
               const isChecked = checkedIngredients.has(idx);
+              const nutrition = calculateIngredientNutrition(
+                it.amount,
+                it.unitOverride,
+                it.ingredient
+              );
               return (
-                <TouchableOpacity
-                  key={idx}
-                  style={[s.ingredientItem, isChecked && s.ingredientItemChecked]}
-                  onPress={() => toggleIngredient(idx)}
-                >
-                  <View
-                    style={[
-                      s.ingredientCheckbox,
-                      isChecked && { backgroundColor: "#f77", borderColor: "#f77" },
-                    ]}
+                <View key={idx} style={s.ingredientItemWrapper}>
+                  <TouchableOpacity
+                    style={[s.ingredientItem, isChecked && s.ingredientItemChecked]}
+                    onPress={() => toggleIngredient(idx)}
                   >
-                    {isChecked && <Ionicons name="checkmark" size={16} color="#fff" />}
-                  </View>
-                  <Text style={[s.ingredientText, isChecked && s.ingredientTextChecked]}>
-                    {it.amount}
-                    {it.unitOverride || it.ingredient.unit
-                      ? ` ${it.unitOverride || it.ingredient.unit}`
-                      : ""}{" "}
-                    {it.ingredient.name}
-                  </Text>
-                </TouchableOpacity>
+                    <View
+                      style={[
+                        s.ingredientCheckbox,
+                        isChecked && { backgroundColor: "#f77", borderColor: "#f77" },
+                      ]}
+                    >
+                      {isChecked && <Ionicons name="checkmark" size={16} color="#fff" />}
+                    </View>
+                    <View style={s.ingredientContent}>
+                      <Text style={[s.ingredientText, isChecked && s.ingredientTextChecked]}>
+                        {it.amount}
+                        {it.unitOverride || it.ingredient.unit
+                          ? ` ${it.unitOverride || it.ingredient.unit}`
+                          : ""}{" "}
+                        {it.ingredient.name}
+                      </Text>
+                      {(nutrition.kcal > 0 || nutrition.protein > 0 || nutrition.carbs > 0 || nutrition.fat > 0) && (
+                        <View style={s.ingredientNutrition}>
+                          {nutrition.kcal > 0 && (
+                            <Text style={s.ingredientNutritionText}>
+                              {nutrition.kcal} kcal
+                            </Text>
+                          )}
+                          {nutrition.protein > 0 && (
+                            <Text style={s.ingredientNutritionText}>
+                              P: {nutrition.protein}g
+                            </Text>
+                          )}
+                          {nutrition.carbs > 0 && (
+                            <Text style={s.ingredientNutritionText}>
+                              C: {nutrition.carbs}g
+                            </Text>
+                          )}
+                          {nutrition.fat > 0 && (
+                            <Text style={s.ingredientNutritionText}>
+                              F: {nutrition.fat}g
+                            </Text>
+                          )}
+                        </View>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                </View>
               );
             })
           ) : (
@@ -857,6 +937,9 @@ const s = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#fff",
   },
+  ingredientItemWrapper: {
+    marginBottom: 4,
+  },
   ingredientText: {
     fontSize: 14,
     color: "#333",
@@ -865,6 +948,24 @@ const s = StyleSheet.create({
   ingredientTextChecked: {
     textDecorationLine: "line-through",
     color: "#999",
+  },
+  ingredientContent: {
+    flex: 1,
+  },
+  ingredientNutrition: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 4,
+  },
+  ingredientNutritionText: {
+    fontSize: 11,
+    color: "#666",
+    backgroundColor: "#f0f0f0",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginRight: 6,
+    marginBottom: 2,
   },
   clearCheckedBtn: {
     paddingVertical: 4,
