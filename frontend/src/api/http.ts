@@ -15,6 +15,16 @@ http.interceptors.request.use(async (config) => {
             config.headers = config.headers ?? {};
             (config.headers as any).Authorization = `Bearer ${token}`;
         }
+        // Log the full URL for debugging
+        const fullUrl = config.baseURL && config.url 
+            ? `${config.baseURL}${config.url.startsWith('/') ? '' : '/'}${config.url}`
+            : config.url;
+        console.log('API Request:', {
+            method: config.method?.toUpperCase(),
+            url: fullUrl,
+            baseURL: config.baseURL,
+            path: config.url
+        });
     } catch {
 
     }

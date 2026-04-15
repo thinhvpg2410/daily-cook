@@ -35,15 +35,20 @@ type DisplayShoppingItem = ShoppingItem & {
 
 const DEFAULT_UNIT_PRICE = 10000; // fallback 10k VND per base unit
 
-const computeEstimatedCost = (item: ShoppingItem, multiplier = 1) => {
+const computeEstimatedCost = (item: ShoppingItem, displayQty: number) => {
+  // Tính tiền = đơn giá × khối lượng
   if (typeof item.unitPrice === "number") {
-    return item.unitPrice * item.qty * multiplier;
+    return item.unitPrice * displayQty;
   }
-  if (typeof item.estimatedCost === "number") {
-    return item.estimatedCost * multiplier;
+  if (typeof item.estimatedCost === "number" && item.qty > 0) {
+    // Nếu có estimatedCost từ backend, tính lại dựa trên displayQty
+    // estimatedCost từ backend = unitPrice * qty (gốc)
+    // Vậy unitPrice = estimatedCost / qty (gốc)
+    // Cost mới = (estimatedCost / qty) * displayQty
+    return (item.estimatedCost / item.qty) * displayQty;
   }
   // Fallback khi backend chưa trả về giá
-  return DEFAULT_UNIT_PRICE * item.qty * multiplier;
+  return DEFAULT_UNIT_PRICE * displayQty;
 };
 
 const formatCurrency = (value: number, currency?: string) => {
@@ -161,11 +166,14 @@ export default function ShoppingListScreen() {
 
   const savingFactor = mode === "saving" ? 0.85 : 1;
   const quantityMultiplier = servings * savingFactor;
-  const adjustedItems: DisplayShoppingItem[] = shoppingItems.map((item) => ({
-    ...item,
-    displayQty: item.qty * quantityMultiplier,
-    displayCost: computeEstimatedCost(item, quantityMultiplier),
-  }));
+  const adjustedItems: DisplayShoppingItem[] = shoppingItems.map((item) => {
+    const displayQty = item.qty * quantityMultiplier;
+    return {
+      ...item,
+      displayQty,
+      displayCost: computeEstimatedCost(item, displayQty),
+    };
+  });
 
   const totalCost = adjustedItems.reduce(
     (sum, item) => sum + (item.displayCost || 0),
