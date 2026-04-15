@@ -1,4 +1,4 @@
-﻿# 🍳 DailyCook - Ứng dụng Quản lý Thực đơn & Dinh dưỡng
+# 🍳 DailyCook - Ứng dụng Quản lý Thực đơn & Dinh dưỡng
 
 DailyCook là một ứng dụng mobile toàn diện giúp người dùng quản lý thực đơn hàng ngày, theo dõi dinh dưỡng, và nhận gợi ý món ăn thông minh từ AI.
 
@@ -69,6 +69,12 @@ DailyCook là một ứng dụng mobile toàn diện giúp người dùng quản
 - **Database**: PostgreSQL
 - **Migrations**: Prisma Migrate
 - **Indexes**: Tối ưu cho performance (16+ indexes)
+
+### DevOps & Deployment
+- **Containerization**: Docker + Docker Compose cho backend stack
+- **Reverse Proxy**: Nginx route traffic public vào NestJS service
+- **Cloud Deployment**: AWS EC2 (public access qua port 80)
+- **CI/CD**: GitHub Actions tự động lint, test, build và deploy
 
 ## 📁 Cấu trúc Dự án
 
@@ -346,6 +352,59 @@ npm run android        # Run on Android
 npm run ios            # Run on iOS
 npm run web            # Run on Web
 ```
+
+## 🚢 Production Deployment (DevOps)
+
+### 1) Chuẩn bị môi trường trên EC2
+
+```bash
+sudo apt update
+sudo apt install -y docker.io docker-compose-plugin git
+sudo usermod -aG docker $USER
+```
+
+Clone source code vào EC2:
+
+```bash
+git clone <repository-url> ~/daily-cook
+cd ~/daily-cook
+cp .env.production.example .env.production
+```
+
+Sau đó cập nhật `.env.production` với secret thực tế.
+
+### 2) Chạy stack production local/EC2
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Stack production gồm:
+- `postgres` (database)
+- `backend` (NestJS API)
+- `nginx` (reverse proxy public port 80)
+
+### 3) CI/CD GitHub Actions
+
+Workflow: `.github/workflows/backend-cicd.yml`
+
+Pipeline tự động:
+- Run lint + tests + build backend
+- Build Docker image
+- SSH vào EC2 và chạy `scripts/deploy-ec2.sh`
+
+Cần cấu hình GitHub Secrets:
+- `EC2_HOST`
+- `EC2_USERNAME`
+- `EC2_SSH_KEY`
+- `EC2_PROJECT_DIR` (ví dụ `/home/ubuntu/daily-cook`)
+
+### 4) Deploy script trên EC2
+
+Script `scripts/deploy-ec2.sh` tự động:
+- Pull source code mới nhất từ branch deploy
+- Rebuild và restart `docker-compose.prod.yml`
+- Dọn docker images không dùng
 
 ## 🗃️ Database Migrations
 
