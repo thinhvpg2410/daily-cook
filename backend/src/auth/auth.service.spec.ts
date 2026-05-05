@@ -106,7 +106,7 @@ describe("AuthService", () => {
       });
 
       await expect(
-        service.register(email, password, name, phone)
+        service.register(email, password, name, phone),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -122,7 +122,7 @@ describe("AuthService", () => {
       });
 
       await expect(
-        service.register(email, password, name, phone)
+        service.register(email, password, name, phone),
       ).rejects.toThrow(BadRequestException);
     });
   });
@@ -149,10 +149,7 @@ describe("AuthService", () => {
       expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({
         where: { email: username.trim().toLowerCase() },
       });
-      expect(argon2.verify).toHaveBeenCalledWith(
-        "hashed_password",
-        password
-      );
+      expect(argon2.verify).toHaveBeenCalledWith("hashed_password", password);
       expect(result).toHaveProperty("accessToken");
     });
 
@@ -185,7 +182,7 @@ describe("AuthService", () => {
       (argon2.verify as jest.Mock).mockResolvedValue(false);
 
       await expect(service.login(username, password)).rejects.toThrow(
-        UnauthorizedException
+        UnauthorizedException,
       );
     });
 
@@ -202,7 +199,7 @@ describe("AuthService", () => {
       (argon2.verify as jest.Mock).mockResolvedValue(true);
 
       await expect(service.login(username, password)).rejects.toThrow(
-        UnauthorizedException
+        UnauthorizedException,
       );
 
       // Should succeed with valid 2FA code
@@ -225,11 +222,11 @@ describe("AuthService", () => {
         jwtService,
         mockConfigService as any,
         totpService,
-        emailService
+        emailService,
       );
 
       await expect(
-        serviceWithoutGoogle.loginWithGoogle(idToken)
+        serviceWithoutGoogle.loginWithGoogle(idToken),
       ).rejects.toThrow(BadRequestException);
     });
   });
@@ -266,7 +263,7 @@ describe("AuthService", () => {
       mockPrisma.user.findUnique.mockResolvedValue(null);
 
       await expect(service.enable2FA(userId)).rejects.toThrow(
-        BadRequestException
+        BadRequestException,
       );
     });
   });
@@ -307,7 +304,7 @@ describe("AuthService", () => {
       });
 
       await expect(service.confirmEnable2FA(userId, code)).rejects.toThrow(
-        BadRequestException
+        BadRequestException,
       );
     });
   });
@@ -373,9 +370,9 @@ describe("AuthService", () => {
         expiresAt,
       });
 
-      await expect(
-        service.verifyResetCode(email, wrongCode)
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.verifyResetCode(email, wrongCode)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it("should throw BadRequestException for expired code", async () => {
@@ -389,7 +386,7 @@ describe("AuthService", () => {
       });
 
       await expect(service.verifyResetCode(email, code)).rejects.toThrow(
-        BadRequestException
+        BadRequestException,
       );
     });
   });
@@ -432,7 +429,7 @@ describe("AuthService", () => {
       const newPassword = "new_password123";
 
       await expect(
-        service.resetPassword(email, code, newPassword)
+        service.resetPassword(email, code, newPassword),
       ).rejects.toThrow(BadRequestException);
     });
   });
@@ -463,7 +460,7 @@ describe("AuthService", () => {
       mockPrisma.user.findUnique.mockResolvedValue(null);
 
       await expect(service.getProfile(userId)).rejects.toThrow(
-        UnauthorizedException
+        UnauthorizedException,
       );
     });
   });

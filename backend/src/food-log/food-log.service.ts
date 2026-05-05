@@ -1,9 +1,19 @@
-import { Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateFoodLogDto } from "./dto/create-food-log.dto";
 import { UpdateFoodLogDto } from "./dto/update-food-log.dto";
 import { QueryFoodLogDto } from "./dto/query-food-log.dto";
-import { startOfDay, endOfDay, formatISO, subDays, differenceInDays } from "date-fns";
+import {
+  startOfDay,
+  endOfDay,
+  formatISO,
+  subDays,
+  differenceInDays,
+} from "date-fns";
 
 @Injectable()
 export class FoodLogService {
@@ -124,7 +134,7 @@ export class FoodLogService {
           fat: acc.fat + (log.fat ?? 0),
           carbs: acc.carbs + (log.carbs ?? 0),
         }),
-        { calories: 0, protein: 0, fat: 0, carbs: 0 }
+        { calories: 0, protein: 0, fat: 0, carbs: 0 },
       );
 
       return {
@@ -141,7 +151,7 @@ export class FoodLogService {
         fat: acc.fat + day.fat / dailyStats.length,
         carbs: acc.carbs + day.carbs / dailyStats.length,
       }),
-      { calories: 0, protein: 0, fat: 0, carbs: 0 }
+      { calories: 0, protein: 0, fat: 0, carbs: 0 },
     );
 
     return {
@@ -363,7 +373,7 @@ export class FoodLogService {
 
       // Đếm số lần đã nấu món này
       const cookedTimes = logs.filter(
-        (l) => l.recipeId === log.recipeId
+        (l) => l.recipeId === log.recipeId,
       ).length;
 
       return {
@@ -390,7 +400,7 @@ export class FoodLogService {
     recipeFrequency.forEach((dates, recipeId) => {
       // Sắp xếp dates
       dates.sort((a, b) => a.getTime() - b.getTime());
-      
+
       // Kiểm tra nếu có ít nhất 2 lần nấu trong vòng 14 ngày
       for (let i = 0; i < dates.length - 1; i++) {
         const daysDiff = differenceInDays(dates[i + 1], dates[i]);
@@ -422,4 +432,3 @@ export class FoodLogService {
     };
   }
 }
-

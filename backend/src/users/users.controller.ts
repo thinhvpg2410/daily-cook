@@ -1,5 +1,10 @@
 import { Body, Controller, Get, Patch, Post, UseGuards } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from "@nestjs/swagger";
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from "@nestjs/swagger";
 import { UsersService } from "./users.service";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { CurrentUser } from "../common/decorators/user.decorator";
@@ -14,7 +19,7 @@ export class UsersController {
   constructor(private readonly users: UsersService) {}
 
   @Get("me")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Lấy thông tin profile của người dùng hiện tại" })
   @ApiResponse({ status: 200, description: "Thông tin profile" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
@@ -23,7 +28,7 @@ export class UsersController {
   }
 
   @Patch("me")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Cập nhật thông tin profile" })
   @ApiResponse({ status: 200, description: "Cập nhật thành công" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
@@ -32,7 +37,7 @@ export class UsersController {
   }
 
   @Patch("me/password")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Đổi mật khẩu" })
   @ApiResponse({ status: 200, description: "Đổi mật khẩu thành công" })
   @ApiResponse({ status: 400, description: "Mật khẩu cũ không đúng" })
@@ -42,7 +47,7 @@ export class UsersController {
   }
 
   @Post("me/avatar")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Upload avatar lên Firebase Storage" })
   @ApiResponse({ status: 200, description: "Upload avatar thành công" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
@@ -51,7 +56,7 @@ export class UsersController {
   }
 
   @Get("me/preferences")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Lấy tùy chọn của người dùng" })
   @ApiResponse({ status: 200, description: "Tùy chọn người dùng" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
@@ -60,11 +65,14 @@ export class UsersController {
   }
 
   @Patch("me/preferences")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Cập nhật tùy chọn của người dùng" })
   @ApiResponse({ status: 200, description: "Cập nhật tùy chọn thành công" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
-  updatePreferences(@CurrentUser() user: any, @Body() dto: UpdatePreferencesDto) {
+  updatePreferences(
+    @CurrentUser() user: any,
+    @Body() dto: UpdatePreferencesDto,
+  ) {
     return this.users.updatePreferences(user.userId, dto);
   }
 }

@@ -11,4 +11,3 @@ import { MealPlanModule } from "../mealplan/mealplan.module";
   exports: [AIService],
 })
 export class AIModule {}
-

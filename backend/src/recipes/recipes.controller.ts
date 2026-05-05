@@ -8,7 +8,14 @@ import {
   Query,
   UseGuards,
 } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from "@nestjs/swagger";
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+  ApiQuery,
+} from "@nestjs/swagger";
 import { RecipesService } from "./recipes.service";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { CurrentUser } from "../common/decorators/user.decorator";
@@ -22,7 +29,7 @@ export class RecipesController {
 
   @UseGuards(JwtAuthGuard)
   @Post()
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Tạo công thức mới" })
   @ApiResponse({ status: 201, description: "Tạo công thức thành công" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
@@ -39,7 +46,7 @@ export class RecipesController {
 
   @UseGuards(JwtAuthGuard)
   @Get("me")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Lấy danh sách công thức của người dùng hiện tại" })
   @ApiResponse({ status: 200, description: "Danh sách công thức" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
@@ -49,7 +56,7 @@ export class RecipesController {
 
   @UseGuards(JwtAuthGuard)
   @Get("me/favorites")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Lấy danh sách công thức yêu thích của người dùng" })
   @ApiResponse({ status: 200, description: "Danh sách công thức yêu thích" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
@@ -68,7 +75,7 @@ export class RecipesController {
 
   @UseGuards(JwtAuthGuard)
   @Get(":id/favorite")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Kiểm tra công thức có trong danh sách yêu thích" })
   @ApiParam({ name: "id", description: "ID công thức" })
   @ApiResponse({ status: 200, description: "Trạng thái yêu thích" })
@@ -79,7 +86,7 @@ export class RecipesController {
 
   @UseGuards(JwtAuthGuard)
   @Post(":id/favorite")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Thêm công thức vào danh sách yêu thích" })
   @ApiParam({ name: "id", description: "ID công thức" })
   @ApiResponse({ status: 201, description: "Đã thêm vào danh sách yêu thích" })
@@ -90,7 +97,7 @@ export class RecipesController {
 
   @UseGuards(JwtAuthGuard)
   @Delete(":id/favorite")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Xóa công thức khỏi danh sách yêu thích" })
   @ApiParam({ name: "id", description: "ID công thức" })
   @ApiResponse({ status: 200, description: "Đã xóa khỏi danh sách yêu thích" })

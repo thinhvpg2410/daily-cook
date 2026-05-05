@@ -86,7 +86,7 @@ describe("EmailService", () => {
       const result = await service.sendForgotPasswordEmail(
         email,
         code,
-        userName
+        userName,
       );
 
       expect(mockPost).toHaveBeenCalledWith("send", { version: "v3.1" });
@@ -107,7 +107,7 @@ describe("EmailService", () => {
               Subject: "Mã xác thực đặt lại mật khẩu - DailyCook",
             }),
           ]),
-        })
+        }),
       );
       expect(result).toEqual({ success: true });
     });
@@ -139,7 +139,7 @@ describe("EmailService", () => {
               }),
             }),
           ]),
-        })
+        }),
       );
     });
 
@@ -149,7 +149,7 @@ describe("EmailService", () => {
       const newService = new EmailService(configService);
 
       await expect(
-        newService.sendForgotPasswordEmail("user@example.com", "123456")
+        newService.sendForgotPasswordEmail("user@example.com", "123456"),
       ).rejects.toThrow("Email service is not configured");
     });
 
@@ -160,7 +160,7 @@ describe("EmailService", () => {
       mockRequest.mockRejectedValue(new Error("SMTP Error"));
 
       await expect(
-        service.sendForgotPasswordEmail(email, code)
+        service.sendForgotPasswordEmail(email, code),
       ).rejects.toThrow();
     });
   });

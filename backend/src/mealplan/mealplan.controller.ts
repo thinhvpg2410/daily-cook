@@ -11,7 +11,15 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery, ApiBody } from "@nestjs/swagger";
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+  ApiQuery,
+  ApiBody,
+} from "@nestjs/swagger";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { CurrentUser } from "../common/decorators/user.decorator";
 import { MealPlanService } from "./mealplan.service";
@@ -29,8 +37,10 @@ export class MealPlanController {
   constructor(private readonly s: MealPlanService) {}
 
   @Get()
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: "Lấy danh sách kế hoạch bữa ăn theo khoảng thời gian" })
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary: "Lấy danh sách kế hoạch bữa ăn theo khoảng thời gian",
+  })
   @ApiResponse({ status: 200, description: "Danh sách kế hoạch bữa ăn" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
   getRange(@CurrentUser() u: any, @Query() q: QueryMealPlanDto) {
@@ -38,33 +48,38 @@ export class MealPlanController {
   }
 
   @Get("nutrition/daily")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Lấy dinh dưỡng dựa trên thực đơn hằng ngày" })
-  @ApiQuery({ name: "date", required: false, description: "Ngày (YYYY-MM-DD). Mặc định hôm nay." })
-  getDailyNutrition(
-    @CurrentUser() u: any,
-    @Query("date") date?: string,
-  ) {
+  @ApiQuery({
+    name: "date",
+    required: false,
+    description: "Ngày (YYYY-MM-DD). Mặc định hôm nay.",
+  })
+  getDailyNutrition(@CurrentUser() u: any, @Query("date") date?: string) {
     return this.s.getDailyNutrition(u.userId, date);
   }
 
   @Put()
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Tạo hoặc cập nhật kế hoạch bữa ăn" })
   @ApiResponse({ status: 200, description: "Tạo/cập nhật thành công" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
   upsert(@CurrentUser() u: any, @Body() dto: CreateMealPlanDto) {
     console.log({
       dtoincontroller: dto,
-    })
+    });
     return this.s.upsert(u.userId, dto);
   }
 
   // Specific routes must come before parameterized routes
   @Get("today-suggest")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Lấy gợi ý bữa ăn cho hôm nay" })
-  @ApiQuery({ name: "slot", description: "Loại bữa ăn (breakfast, lunch, dinner)", required: false })
+  @ApiQuery({
+    name: "slot",
+    description: "Loại bữa ăn (breakfast, lunch, dinner)",
+    required: false,
+  })
   @ApiResponse({ status: 200, description: "Gợi ý bữa ăn" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
   async getTodaySuggest(
@@ -75,10 +90,20 @@ export class MealPlanController {
   }
 
   @Get("shopping/from-range")
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: "Tạo danh sách mua sắm từ kế hoạch bữa ăn theo khoảng thời gian" })
-  @ApiQuery({ name: "start", description: "Ngày bắt đầu (ISO 8601)", required: true })
-  @ApiQuery({ name: "end", description: "Ngày kết thúc (ISO 8601)", required: true })
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary: "Tạo danh sách mua sắm từ kế hoạch bữa ăn theo khoảng thời gian",
+  })
+  @ApiQuery({
+    name: "start",
+    description: "Ngày bắt đầu (ISO 8601)",
+    required: true,
+  })
+  @ApiQuery({
+    name: "end",
+    description: "Ngày kết thúc (ISO 8601)",
+    required: true,
+  })
   @ApiResponse({ status: 200, description: "Danh sách mua sắm" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
   toShopping(
@@ -90,8 +115,10 @@ export class MealPlanController {
   }
 
   @Post("copy-week")
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: "Sao chép kế hoạch bữa ăn từ tuần này sang tuần khác" })
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary: "Sao chép kế hoạch bữa ăn từ tuần này sang tuần khác",
+  })
   @ApiResponse({ status: 200, description: "Sao chép thành công" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
   copyWeek(@CurrentUser() u: any, @Body() dto: CopyWeekDto) {
@@ -99,17 +126,27 @@ export class MealPlanController {
   }
 
   @Post("suggest")
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: "Gợi ý bữa ăn dựa trên khu vực, chế độ ăn và calo mục tiêu" })
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary: "Gợi ý bữa ăn dựa trên khu vực, chế độ ăn và calo mục tiêu",
+  })
   @ApiBody({
     schema: {
       type: "object",
       properties: {
         region: { type: "string", description: "Khu vực", example: "vietnam" },
-        dietType: { type: "string", description: "Chế độ ăn", example: "vegetarian" },
-        targetKcal: { type: "number", description: "Calo mục tiêu", example: 2000 }
-      }
-    }
+        dietType: {
+          type: "string",
+          description: "Chế độ ăn",
+          example: "vegetarian",
+        },
+        targetKcal: {
+          type: "number",
+          description: "Calo mục tiêu",
+          example: 2000,
+        },
+      },
+    },
   })
   @ApiResponse({ status: 200, description: "Gợi ý bữa ăn" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
@@ -119,7 +156,7 @@ export class MealPlanController {
   }
 
   @Post("suggest-menu")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Gợi ý thực đơn theo tuần" })
   @ApiResponse({ status: 200, description: "Gợi ý thực đơn" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
@@ -128,7 +165,7 @@ export class MealPlanController {
   }
 
   @Get(":id")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Lấy thông tin chi tiết kế hoạch bữa ăn" })
   @ApiParam({ name: "id", description: "ID kế hoạch bữa ăn" })
   @ApiResponse({ status: 200, description: "Thông tin kế hoạch bữa ăn" })
@@ -139,7 +176,7 @@ export class MealPlanController {
   }
 
   @Patch(":id")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Cập nhật kế hoạch bữa ăn" })
   @ApiParam({ name: "id", description: "ID kế hoạch bữa ăn" })
   @ApiResponse({ status: 200, description: "Cập nhật thành công" })
@@ -154,7 +191,7 @@ export class MealPlanController {
   }
 
   @Delete(":id")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Xóa kế hoạch bữa ăn" })
   @ApiParam({ name: "id", description: "ID kế hoạch bữa ăn" })
   @ApiResponse({ status: 200, description: "Xóa thành công" })
@@ -165,7 +202,7 @@ export class MealPlanController {
   }
 
   @Patch(":id/slot")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Cập nhật một slot bữa ăn trong kế hoạch" })
   @ApiParam({ name: "id", description: "ID kế hoạch bữa ăn" })
   @ApiResponse({ status: 200, description: "Cập nhật slot thành công" })

@@ -1,4 +1,11 @@
-import { IsArray, IsNumber, IsObject, IsOptional, IsString, ValidateNested } from "class-validator";
+import {
+  IsArray,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from "class-validator";
 import { Type } from "class-transformer";
 import { ApiProperty } from "@nestjs/swagger";
 
@@ -48,13 +55,19 @@ class AverageNutritionDto {
 }
 
 export class GenerateNutritionTipsDto {
-  @ApiProperty({ description: "Dữ liệu dinh dưỡng từng ngày", type: [DailyNutritionDto] })
+  @ApiProperty({
+    description: "Dữ liệu dinh dưỡng từng ngày",
+    type: [DailyNutritionDto],
+  })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => DailyNutritionDto)
   daily!: DailyNutritionDto[];
 
-  @ApiProperty({ description: "Dữ liệu dinh dưỡng trung bình", type: AverageNutritionDto })
+  @ApiProperty({
+    description: "Dữ liệu dinh dưỡng trung bình",
+    type: AverageNutritionDto,
+  })
   @IsObject()
   @ValidateNested()
   @Type(() => AverageNutritionDto)
@@ -64,14 +77,19 @@ export class GenerateNutritionTipsDto {
   @IsNumber()
   calorieTarget!: number;
 
-  @ApiProperty({ description: "Ngày bắt đầu tuần (YYYY-MM-DD)", required: false })
+  @ApiProperty({
+    description: "Ngày bắt đầu tuần (YYYY-MM-DD)",
+    required: false,
+  })
   @IsOptional()
   @IsString()
   weekStart?: string;
 
-  @ApiProperty({ description: "Ngày kết thúc tuần (YYYY-MM-DD)", required: false })
+  @ApiProperty({
+    description: "Ngày kết thúc tuần (YYYY-MM-DD)",
+    required: false,
+  })
   @IsOptional()
   @IsString()
   weekEnd?: string;
 }
-

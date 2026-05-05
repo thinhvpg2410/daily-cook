@@ -51,23 +51,23 @@ export class AuthService {
     // username có thể là email hoặc phone
     // Kiểm tra xem là email (có @) hay phone
     const isEmail = username.includes("@");
-    
+
     let user;
     if (isEmail) {
       // Tìm bằng email (trim và lowercase)
-      user = await this.prisma.user.findUnique({ 
-        where: { email: username.trim().toLowerCase() } 
+      user = await this.prisma.user.findUnique({
+        where: { email: username.trim().toLowerCase() },
       });
     } else {
       // Tìm bằng phone
       // Normalize phone: loại bỏ tất cả ký tự không phải số và dấu +
-      let phone = username.trim();
+      const phone = username.trim();
       const hadPlusAtStart = phone.startsWith("+");
-      
+
       // Loại bỏ tất cả ký tự đặc biệt (spaces, dashes, parentheses, etc.)
       // Chỉ giữ lại số và dấu +
       const cleaned = phone.replace(/[^\d\+]/g, "");
-      
+
       // Xử lý dấu +: chỉ giữ một dấu + ở đầu
       let normalizedPhone: string;
       if (cleaned.includes("+")) {
@@ -78,13 +78,13 @@ export class AuthService {
         // Không có dấu + trong cleaned string
         normalizedPhone = hadPlusAtStart ? "+" + cleaned : cleaned;
       }
-      
+
       // Thử tìm user với các format khác nhau của phone
       const phoneVariants: string[] = [];
-      
+
       // Thêm normalized phone
       phoneVariants.push(normalizedPhone);
-      
+
       // Nếu có dấu +, thêm variant không có dấu +
       if (normalizedPhone.startsWith("+")) {
         phoneVariants.push(normalizedPhone.substring(1));
@@ -92,10 +92,10 @@ export class AuthService {
         // Nếu không có dấu +, thêm variant có dấu +
         phoneVariants.push("+" + normalizedPhone);
       }
-      
+
       // Loại bỏ duplicates
       const uniqueVariants = Array.from(new Set(phoneVariants));
-      
+
       // Tìm user với từng variant
       for (const variant of uniqueVariants) {
         user = await this.prisma.user.findUnique({ where: { phone: variant } });
@@ -105,7 +105,7 @@ export class AuthService {
 
     if (!user || !user.passwordHash)
       throw new UnauthorizedException("Sai thông tin đăng nhập");
-    
+
     const ok = await argon2.verify(user.passwordHash, password);
     if (!ok) throw new UnauthorizedException("Sai thông tin đăng nhập");
 
@@ -129,23 +129,29 @@ export class AuthService {
   async loginWithGoogle(idToken: string) {
     try {
       if (!this.googleClient) {
-        console.error("Google client not initialized. Check GOOGLE_CLIENT_ID in .env");
-        throw new BadRequestException("Google chưa cấu hình. Vui lòng kiểm tra GOOGLE_CLIENT_ID trong backend .env");
+        console.error(
+          "Google client not initialized. Check GOOGLE_CLIENT_ID in .env",
+        );
+        throw new BadRequestException(
+          "Google chưa cấu hình. Vui lòng kiểm tra GOOGLE_CLIENT_ID trong backend .env",
+        );
       }
 
       const googleClientId = this.cfg.get<string>("GOOGLE_CLIENT_ID");
       if (!googleClientId) {
         console.error("GOOGLE_CLIENT_ID not found in config");
-        throw new BadRequestException("GOOGLE_CLIENT_ID chưa được cấu hình trong backend .env");
+        throw new BadRequestException(
+          "GOOGLE_CLIENT_ID chưa được cấu hình trong backend .env",
+        );
       }
 
       console.log("Verifying Google ID token with audience:", googleClientId);
-      
+
       const ticket = await this.googleClient.verifyIdToken({
         idToken,
         audience: googleClientId,
       });
-      
+
       const payload = ticket.getPayload();
       if (!payload?.email) {
         console.error("No email in Google token payload");
@@ -177,33 +183,41 @@ export class AuthService {
       } else {
         console.log("Existing user logged in via Google:", user.id);
       }
-      
+
       return this.sign(user);
     } catch (error: any) {
       console.error("Error in loginWithGoogle:", error);
-      
+
       // Xử lý các lỗi cụ thể
-      if (error instanceof BadRequestException || error instanceof UnauthorizedException) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof UnauthorizedException
+      ) {
         throw error;
       }
-      
+
       // Lỗi từ Google Auth Library
-      if (error.message?.includes("Invalid token") || error.message?.includes("Token used too early")) {
-        throw new UnauthorizedException("Token Google không hợp lệ hoặc đã hết hạn");
+      if (
+        error.message?.includes("Invalid token") ||
+        error.message?.includes("Token used too early")
+      ) {
+        throw new UnauthorizedException(
+          "Token Google không hợp lệ hoặc đã hết hạn",
+        );
       }
-      
+
       if (error.message?.includes("Wrong number of segments")) {
         throw new BadRequestException("Format ID token không đúng");
       }
-      
+
       // Lỗi database
       if (error.code === "P2002") {
         throw new BadRequestException("Email đã tồn tại trong hệ thống");
       }
-      
+
       // Lỗi khác
       throw new BadRequestException(
-        `Lỗi khi đăng nhập bằng Google: ${error.message || "Unknown error"}`
+        `Lỗi khi đăng nhập bằng Google: ${error.message || "Unknown error"}`,
       );
     }
   }
@@ -294,12 +308,15 @@ export class AuthService {
       await this.emailService.sendForgotPasswordEmail(
         normalizedEmail,
         code,
-        user.name || undefined
+        user.name || undefined,
       );
       this.logger.log(`Password reset email sent to ${normalizedEmail}`);
     } catch (error: any) {
-      this.logger.error(`Failed to send password reset email to ${normalizedEmail}:`, error);
-      
+      this.logger.error(
+        `Failed to send password reset email to ${normalizedEmail}:`,
+        error,
+      );
+
       // In development, still log the code for testing
       if (process.env.NODE_ENV === "development") {
         console.log(`[DEV] OTP for ${normalizedEmail}: ${code}`);
@@ -308,10 +325,10 @@ export class AuthService {
           devCode: code,
         };
       }
-      
+
       // In production, don't reveal the error details
       throw new BadRequestException(
-        "Không thể gửi email. Vui lòng thử lại sau hoặc liên hệ hỗ trợ."
+        "Không thể gửi email. Vui lòng thử lại sau hoặc liên hệ hỗ trợ.",
       );
     }
 

@@ -2,7 +2,10 @@ import { IsString, IsOptional, IsArray, ValidateNested } from "class-validator";
 import { ApiProperty } from "@nestjs/swagger";
 
 export class ChatMessageDto {
-  @ApiProperty({ description: "Nội dung tin nhắn", example: "Tôi muốn ăn món chay hôm nay" })
+  @ApiProperty({
+    description: "Nội dung tin nhắn",
+    example: "Tôi muốn ăn món chay hôm nay",
+  })
   @IsString()
   message!: string;
 
@@ -17,13 +20,18 @@ export class ChatMessageDto {
 }
 
 export class SuggestFromChatDto {
-  @ApiProperty({ description: "Yêu cầu của người dùng", example: "Gợi ý món ăn miền Bắc cho bữa trưa" })
+  @ApiProperty({
+    description: "Yêu cầu của người dùng",
+    example: "Gợi ý món ăn miền Bắc cho bữa trưa",
+  })
   @IsString()
   request!: string;
 
-  @ApiProperty({ description: "Ngày muốn suggest (ISO format)", required: false })
+  @ApiProperty({
+    description: "Ngày muốn suggest (ISO format)",
+    required: false,
+  })
   @IsOptional()
   @IsString()
   date?: string;
 }
-

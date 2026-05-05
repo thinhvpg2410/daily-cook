@@ -1,5 +1,10 @@
 import { Body, Controller, Post, UseGuards } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from "@nestjs/swagger";
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from "@nestjs/swagger";
 import { AIService } from "./ai.service";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { CurrentUser } from "../common/decorators/user.decorator";
@@ -50,11 +55,19 @@ export class AIController {
 
   @Post("calculate-calorie-goal")
   @ApiBearerAuth("JWT-auth")
-  @ApiOperation({ summary: "Tính toán năng lượng phù hợp dựa trên thông tin cá nhân" })
+  @ApiOperation({
+    summary: "Tính toán năng lượng phù hợp dựa trên thông tin cá nhân",
+  })
   @ApiResponse({ status: 200, description: "Năng lượng và macros được gợi ý" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
-  @ApiResponse({ status: 400, description: "Lỗi AI service hoặc dữ liệu không hợp lệ" })
-  async calculateCalorieGoal(@CurrentUser() user: any, @Body() dto: CalculateCalorieGoalDto) {
+  @ApiResponse({
+    status: 400,
+    description: "Lỗi AI service hoặc dữ liệu không hợp lệ",
+  })
+  async calculateCalorieGoal(
+    @CurrentUser() user: any,
+    @Body() dto: CalculateCalorieGoalDto,
+  ) {
     return this.aiService.calculateCalorieGoal(
       user.userId,
       dto.gender,
@@ -68,12 +81,22 @@ export class AIController {
 
   @Post("generate-nutrition-tips")
   @ApiBearerAuth("JWT-auth")
-  @ApiOperation({ summary: "Gen nutrition tips bằng AI dựa trên dữ liệu dinh dưỡng" })
-  @ApiResponse({ status: 200, description: "Danh sách tips dinh dưỡng được gen" })
+  @ApiOperation({
+    summary: "Gen nutrition tips bằng AI dựa trên dữ liệu dinh dưỡng",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Danh sách tips dinh dưỡng được gen",
+  })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
-  @ApiResponse({ status: 400, description: "Lỗi AI service hoặc dữ liệu không hợp lệ" })
-  async generateNutritionTips(@CurrentUser() user: any, @Body() dto: GenerateNutritionTipsDto) {
+  @ApiResponse({
+    status: 400,
+    description: "Lỗi AI service hoặc dữ liệu không hợp lệ",
+  })
+  async generateNutritionTips(
+    @CurrentUser() user: any,
+    @Body() dto: GenerateNutritionTipsDto,
+  ) {
     return this.aiService.generateNutritionTips(user.userId, dto);
   }
 }
-

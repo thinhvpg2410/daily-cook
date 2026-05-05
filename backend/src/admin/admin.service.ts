@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException, Inject, forwardRef, Optional } from "@nestjs/common";
+import {
+  Injectable,
+  NotFoundException,
+  Inject,
+  forwardRef,
+  Optional,
+} from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { PriceScraperService } from "../price-scraper/price-scraper.service";
 
@@ -13,17 +19,18 @@ export class AdminService {
 
   async getStats() {
     try {
-      const [totalUsers, totalRecipes, totalMealPlans, totalFoodLogs] = await Promise.all([
-        this.prisma.user.count(),
-        this.prisma.recipe.count(),
-        this.prisma.mealPlan.count(),
-        this.prisma.foodLog.count(),
-      ]);
+      const [totalUsers, totalRecipes, totalMealPlans, totalFoodLogs] =
+        await Promise.all([
+          this.prisma.user.count(),
+          this.prisma.recipe.count(),
+          this.prisma.mealPlan.count(),
+          this.prisma.foodLog.count(),
+        ]);
 
       // Active users: users who have logged in or created content in the last 30 days
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      
+
       const activeUsers = await this.prisma.user.count({
         where: {
           OR: [
@@ -211,26 +218,29 @@ export class AdminService {
     }
   }
 
-  async updateUser(id: string, data: {
-    name?: string;
-    phone?: string;
-    email?: string;
-    dob?: Date | string;
-    avatarUrl?: string;
-    role?: "USER" | "ADMIN";
-    preference?: {
-      gender?: string;
-      age?: number;
-      height?: number;
-      weight?: number;
-      activity?: string;
-      goal?: string;
-      dailyKcalTarget?: number;
-      dietType?: string;
-      dislikedIngredients?: string[];
-      likedTags?: string[];
-    };
-  }) {
+  async updateUser(
+    id: string,
+    data: {
+      name?: string;
+      phone?: string;
+      email?: string;
+      dob?: Date | string;
+      avatarUrl?: string;
+      role?: "USER" | "ADMIN";
+      preference?: {
+        gender?: string;
+        age?: number;
+        height?: number;
+        weight?: number;
+        activity?: string;
+        goal?: string;
+        dailyKcalTarget?: number;
+        dietType?: string;
+        dislikedIngredients?: string[];
+        likedTags?: string[];
+      };
+    },
+  ) {
     try {
       const user = await this.prisma.user.findUnique({ where: { id } });
       if (!user) {
@@ -391,7 +401,9 @@ export class AdminService {
     return { deleted: true };
   }
 
-  private calculateNutrition(items: Array<{ ingredient: any; amount: number }>) {
+  private calculateNutrition(
+    items: Array<{ ingredient: any; amount: number }>,
+  ) {
     let totalKcal = 0;
     let totalProtein = 0;
     let totalFat = 0;
@@ -408,18 +420,18 @@ export class AdminService {
 
     for (const item of items) {
       if (!item.ingredient) continue;
-      
+
       const ing = item.ingredient;
       const amount = item.amount || 0;
       if (amount <= 0) continue;
-      
+
       // Assume ingredient nutrition is per 100g/ml
       const ratio = amount / 100;
-      
-      if (ing.kcal) totalKcal += (ing.kcal * ratio);
-      if (ing.protein) totalProtein += (ing.protein * ratio);
-      if (ing.fat) totalFat += (ing.fat * ratio);
-      if (ing.carbs) totalCarbs += (ing.carbs * ratio);
+
+      if (ing.kcal) totalKcal += ing.kcal * ratio;
+      if (ing.protein) totalProtein += ing.protein * ratio;
+      if (ing.fat) totalFat += ing.fat * ratio;
+      if (ing.carbs) totalCarbs += ing.carbs * ratio;
     }
 
     return {
@@ -437,8 +449,10 @@ export class AdminService {
       }
 
       // Filter valid items
-      const itemsToCreate = (data.items || []).filter((i: any) => i.ingredientId && i.amount > 0);
-      
+      const itemsToCreate = (data.items || []).filter(
+        (i: any) => i.ingredientId && i.amount > 0,
+      );
+
       // First create recipe with items
       const recipe = await this.prisma.recipe.create({
         data: {
@@ -450,20 +464,23 @@ export class AdminService {
           cookTime: data.cookTime || null,
           region: data.region || null,
           authorId: data.authorId || null,
-          items: itemsToCreate.length > 0 ? {
-            create: itemsToCreate.map((i: any) => ({
-              ingredientId: i.ingredientId,
-              amount: i.amount,
-              unitOverride: i.unitOverride || null,
-            })),
-          } : undefined,
+          items:
+            itemsToCreate.length > 0
+              ? {
+                  create: itemsToCreate.map((i: any) => ({
+                    ingredientId: i.ingredientId,
+                    amount: i.amount,
+                    unitOverride: i.unitOverride || null,
+                  })),
+                }
+              : undefined,
         },
         include: { items: { include: { ingredient: true } } },
       });
 
       // Calculate nutrition from ingredients
       const nutrition = this.calculateNutrition(recipe.items || []);
-      
+
       // Update recipe with calculated nutrition
       return this.prisma.recipe.update({
         where: { id: recipe.id },
@@ -495,7 +512,9 @@ export class AdminService {
     });
 
     // Filter valid items
-    const itemsToCreate = (data.items || []).filter((i: any) => i.ingredientId && i.amount > 0);
+    const itemsToCreate = (data.items || []).filter(
+      (i: any) => i.ingredientId && i.amount > 0,
+    );
 
     // Update recipe and create new items
     const updated = await this.prisma.recipe.update({
@@ -508,20 +527,23 @@ export class AdminService {
         image: data.image || null,
         cookTime: data.cookTime || null,
         region: data.region || null,
-        items: itemsToCreate.length > 0 ? {
-          create: itemsToCreate.map((i: any) => ({
-            ingredientId: i.ingredientId,
-            amount: i.amount,
-            unitOverride: i.unitOverride || null,
-          })),
-        } : undefined,
+        items:
+          itemsToCreate.length > 0
+            ? {
+                create: itemsToCreate.map((i: any) => ({
+                  ingredientId: i.ingredientId,
+                  amount: i.amount,
+                  unitOverride: i.unitOverride || null,
+                })),
+              }
+            : undefined,
       },
       include: { items: { include: { ingredient: true } } },
     });
 
     // Calculate nutrition from ingredients
     const nutrition = this.calculateNutrition(updated.items || []);
-    
+
     // Update recipe with calculated nutrition
     return this.prisma.recipe.update({
       where: { id },
@@ -538,19 +560,19 @@ export class AdminService {
       const recipes = await this.prisma.recipe.findMany({
         select: { tags: true },
       });
-      
+
       // Collect all unique tags
       const allTags = new Set<string>();
-      recipes.forEach(recipe => {
+      recipes.forEach((recipe) => {
         if (Array.isArray(recipe.tags)) {
-          recipe.tags.forEach(tag => {
-            if (tag && typeof tag === 'string') {
+          recipe.tags.forEach((tag) => {
+            if (tag && typeof tag === "string") {
               allTags.add(tag);
             }
           });
         }
       });
-      
+
       return Array.from(allTags).sort();
     } catch (error: any) {
       console.error("Error getting tags:", error);
@@ -587,14 +609,14 @@ export class AdminService {
 
       const normalizedName = ingredient.name.trim().toLowerCase();
       const priceData = prices[normalizedName];
-      
+
       if (priceData && priceData.pricePerUnit) {
         // Update ingredient with new price
         const updated = await this.prisma.ingredient.update({
           where: { id: ingredientId },
           data: {
             pricePerUnit: priceData.pricePerUnit,
-            priceCurrency: priceData.currency || 'VND',
+            priceCurrency: priceData.currency || "VND",
             priceUpdatedAt: new Date(),
           },
         });
@@ -605,7 +627,7 @@ export class AdminService {
           pricePerUnit: updated.pricePerUnit,
           priceCurrency: updated.priceCurrency,
           priceUpdatedAt: updated.priceUpdatedAt,
-          source: priceData.source || 'market',
+          source: priceData.source || "market",
         };
       }
     } catch (error: any) {
@@ -623,7 +645,11 @@ export class AdminService {
     };
   }
 
-  async getMealPlans(params: { page?: number; limit?: number; userId?: string }) {
+  async getMealPlans(params: {
+    page?: number;
+    limit?: number;
+    userId?: string;
+  }) {
     try {
       const page = params.page ? Number(params.page) : 1;
       const limit = params.limit ? Number(params.limit) : 20;
@@ -696,29 +722,30 @@ export class AdminService {
       }
 
       // Fetch recipe details for each slot
-      const slots = mealPlan.slots as any;
+      const slots = mealPlan.slots;
       const recipeIds: string[] = [];
-      
+
       if (slots) {
         if (slots.breakfast) recipeIds.push(...slots.breakfast);
         if (slots.lunch) recipeIds.push(...slots.lunch);
         if (slots.dinner) recipeIds.push(...slots.dinner);
       }
 
-      const recipes = recipeIds.length > 0
-        ? await this.prisma.recipe.findMany({
-            where: { id: { in: recipeIds } },
-            select: {
-              id: true,
-              title: true,
-              image: true,
-              totalKcal: true,
-            },
-          })
-        : [];
+      const recipes =
+        recipeIds.length > 0
+          ? await this.prisma.recipe.findMany({
+              where: { id: { in: recipeIds } },
+              select: {
+                id: true,
+                title: true,
+                image: true,
+                totalKcal: true,
+              },
+            })
+          : [];
 
       const recipeMap: Record<string, any> = {};
-      recipes.forEach(r => {
+      recipes.forEach((r) => {
         recipeMap[r.id] = r;
       });
 
@@ -732,7 +759,11 @@ export class AdminService {
     }
   }
 
-  async getFoodLogs(params: { page?: number; limit?: number; userId?: string }) {
+  async getFoodLogs(params: {
+    page?: number;
+    limit?: number;
+    userId?: string;
+  }) {
     try {
       const page = params.page ? Number(params.page) : 1;
       const limit = params.limit ? Number(params.limit) : 20;
@@ -781,7 +812,11 @@ export class AdminService {
     }
   }
 
-  async getIngredients(params: { page?: number; limit?: number; search?: string }) {
+  async getIngredients(params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+  }) {
     const page = params.page || 1;
     const limit = params.limit || 20;
     const skip = (page - 1) * limit;
@@ -823,7 +858,9 @@ export class AdminService {
   }
 
   async updateIngredient(id: string, data: any) {
-    const ingredient = await this.prisma.ingredient.findUnique({ where: { id } });
+    const ingredient = await this.prisma.ingredient.findUnique({
+      where: { id },
+    });
     if (!ingredient) {
       throw new NotFoundException("Ingredient not found");
     }
@@ -847,7 +884,9 @@ export class AdminService {
   }
 
   async deleteIngredient(id: string) {
-    const ingredient = await this.prisma.ingredient.findUnique({ where: { id } });
+    const ingredient = await this.prisma.ingredient.findUnique({
+      where: { id },
+    });
     if (!ingredient) {
       throw new NotFoundException("Ingredient not found");
     }
@@ -856,4 +895,3 @@ export class AdminService {
     return { deleted: true };
   }
 }
-

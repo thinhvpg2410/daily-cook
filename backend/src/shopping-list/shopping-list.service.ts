@@ -45,7 +45,10 @@ export class ShoppingListService {
         );
         try {
           const aiPriceMap = await this.aiService.fetchIngredientMarketPrices(
-            missingPrices.map((p) => ({ name: p.name, unit: p.unit || undefined })),
+            missingPrices.map((p) => ({
+              name: p.name,
+              unit: p.unit || undefined,
+            })),
           );
           // Merge AI prices into price map
           Object.assign(priceMap, aiPriceMap);

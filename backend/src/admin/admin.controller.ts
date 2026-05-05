@@ -10,7 +10,13 @@ import {
   UseGuards,
   Logger,
 } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiQuery,
+} from "@nestjs/swagger";
 import { AdminService } from "./admin.service";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
@@ -44,7 +50,9 @@ export class AdminController {
   @ApiQuery({ name: "limit", required: false, type: Number })
   @ApiQuery({ name: "search", required: false, type: String })
   @ApiResponse({ status: 200, description: "Danh sách người dùng" })
-  async getUsers(@Query() params: { page?: number; limit?: number; search?: string }) {
+  async getUsers(
+    @Query() params: { page?: number; limit?: number; search?: string },
+  ) {
     try {
       const parsedParams = {
         page: params.page ? Number(params.page) : undefined,
@@ -70,7 +78,10 @@ export class AdminController {
   @ApiOperation({ summary: "Cập nhật vai trò người dùng" })
   @ApiResponse({ status: 200, description: "Cập nhật thành công" })
   @ApiResponse({ status: 404, description: "Không tìm thấy người dùng" })
-  updateUserRole(@Param("id") id: string, @Body() body: { role: "USER" | "ADMIN" }) {
+  updateUserRole(
+    @Param("id") id: string,
+    @Body() body: { role: "USER" | "ADMIN" },
+  ) {
     return this.adminService.updateUserRole(id, body.role);
   }
 
@@ -101,7 +112,9 @@ export class AdminController {
   @ApiQuery({ name: "limit", required: false, type: Number })
   @ApiQuery({ name: "search", required: false, type: String })
   @ApiResponse({ status: 200, description: "Danh sách công thức" })
-  async getRecipes(@Query() params: { page?: number; limit?: number; search?: string }) {
+  async getRecipes(
+    @Query() params: { page?: number; limit?: number; search?: string },
+  ) {
     try {
       const parsedParams = {
         page: params.page ? Number(params.page) : undefined,
@@ -167,7 +180,9 @@ export class AdminController {
   @ApiQuery({ name: "limit", required: false, type: Number })
   @ApiQuery({ name: "userId", required: false, type: String })
   @ApiResponse({ status: 200, description: "Danh sách kế hoạch bữa ăn" })
-  async getMealPlans(@Query() params: { page?: number; limit?: number; userId?: string }) {
+  async getMealPlans(
+    @Query() params: { page?: number; limit?: number; userId?: string },
+  ) {
     try {
       const parsedParams = {
         page: params.page ? Number(params.page) : undefined,
@@ -200,7 +215,9 @@ export class AdminController {
   @ApiQuery({ name: "limit", required: false, type: Number })
   @ApiQuery({ name: "userId", required: false, type: String })
   @ApiResponse({ status: 200, description: "Danh sách nhật ký ăn uống" })
-  async getFoodLogs(@Query() params: { page?: number; limit?: number; userId?: string }) {
+  async getFoodLogs(
+    @Query() params: { page?: number; limit?: number; userId?: string },
+  ) {
     try {
       const parsedParams = {
         page: params.page ? Number(params.page) : undefined,
@@ -220,7 +237,9 @@ export class AdminController {
   @ApiQuery({ name: "limit", required: false, type: Number })
   @ApiQuery({ name: "search", required: false, type: String })
   @ApiResponse({ status: 200, description: "Danh sách nguyên liệu" })
-  async getIngredients(@Query() params: { page?: number; limit?: number; search?: string }) {
+  async getIngredients(
+    @Query() params: { page?: number; limit?: number; search?: string },
+  ) {
     try {
       const parsedParams = {
         page: params.page ? Number(params.page) : undefined,
@@ -257,4 +276,3 @@ export class AdminController {
     return this.adminService.deleteIngredient(id);
   }
 }
-
