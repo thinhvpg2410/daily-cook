@@ -15,14 +15,20 @@ git checkout "$BRANCH"
 git pull origin "$BRANCH"
 
 echo ">> Building and starting production stack"
-if command -v docker-compose &> /dev/null; then
-  COMPOSE_CMD="docker-compose"
-else
-  COMPOSE_CMD="docker compose"
-fi
+export PATH=$PATH:/usr/local/bin:/opt/bin
 
-$COMPOSE_CMD -f docker-compose.prod.yml pull || true
-$COMPOSE_CMD -f docker-compose.prod.yml up -d --build
+if docker compose version &> /dev/null; then
+  echo "Using 'docker compose' plugin"
+  docker compose -f docker-compose.prod.yml pull || true
+  docker compose -f docker-compose.prod.yml up -d --build
+elif docker-compose version &> /dev/null; then
+  echo "Using standalone 'docker-compose'"
+  docker-compose -f docker-compose.prod.yml pull || true
+  docker-compose -f docker-compose.prod.yml up -d --build
+else
+  echo "ERROR: Neither 'docker compose' nor 'docker-compose' found in PATH ($PATH)."
+  exit 1
+fi
 
 echo ">> Cleaning dangling Docker images"
 docker image prune -f
