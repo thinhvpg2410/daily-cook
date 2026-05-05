@@ -28,6 +28,14 @@ describe("EmailService", () => {
       } as any;
     });
 
+    mockConfigService.get.mockImplementation((key: string) => {
+      if (key === "MAILJET_API_KEY") return "test_api_key";
+      if (key === "MAILJET_API_SECRET") return "test_api_secret";
+      if (key === "MAILJET_FROM_EMAIL") return "noreply@dailycook.com";
+      if (key === "MAILJET_FROM_NAME") return "DailyCook";
+      return undefined;
+    });
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         EmailService,
@@ -43,10 +51,6 @@ describe("EmailService", () => {
 
   describe("constructor", () => {
     it("should initialize Mailjet client when credentials are provided", () => {
-      mockConfigService.get
-        .mockReturnValueOnce("test_api_key")
-        .mockReturnValueOnce("test_api_secret");
-
       const newService = new EmailService(configService);
 
       expect(Client).toHaveBeenCalledWith({
@@ -56,7 +60,7 @@ describe("EmailService", () => {
     });
 
     it("should not initialize Mailjet when credentials are missing", () => {
-      mockConfigService.get.mockReturnValue(undefined);
+      mockConfigService.get.mockImplementation(() => undefined);
 
       const newService = new EmailService(configService);
 
@@ -66,14 +70,6 @@ describe("EmailService", () => {
   });
 
   describe("sendForgotPasswordEmail", () => {
-    beforeEach(() => {
-      mockConfigService.get
-        .mockReturnValueOnce("test_api_key")
-        .mockReturnValueOnce("test_api_secret")
-        .mockReturnValueOnce("noreply@dailycook.com")
-        .mockReturnValueOnce("DailyCook");
-    });
-
     it("should send forgot password email successfully", async () => {
       const email = "user@example.com";
       const code = "123456";
@@ -113,11 +109,11 @@ describe("EmailService", () => {
     });
 
     it("should use default from email/name if not configured", async () => {
-      mockConfigService.get
-        .mockReturnValueOnce("test_api_key")
-        .mockReturnValueOnce("test_api_secret")
-        .mockReturnValueOnce(undefined) // MAILJET_FROM_EMAIL
-        .mockReturnValueOnce(undefined); // MAILJET_FROM_NAME
+      mockConfigService.get.mockImplementation((key: string) => {
+        if (key === "MAILJET_API_KEY") return "test_api_key";
+        if (key === "MAILJET_API_SECRET") return "test_api_secret";
+        return undefined;
+      });
 
       const newService = new EmailService(configService);
       const email = "user@example.com";
@@ -144,7 +140,7 @@ describe("EmailService", () => {
     });
 
     it("should throw error if Mailjet is not initialized", async () => {
-      mockConfigService.get.mockReturnValue(undefined);
+      mockConfigService.get.mockImplementation(() => undefined);
 
       const newService = new EmailService(configService);
 

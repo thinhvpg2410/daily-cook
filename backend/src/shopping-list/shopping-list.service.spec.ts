@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { ShoppingListService } from "./shopping-list.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { AIService } from "../ai/ai.service";
+import { PriceScraperService } from "../price-scraper/price-scraper.service";
 
 describe("ShoppingListService", () => {
   let service: ShoppingListService;
@@ -26,12 +27,17 @@ describe("ShoppingListService", () => {
     fetchIngredientMarketPrices: jest.fn(),
   };
 
+  const mockPriceScraperService = {
+    scrapePrice: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ShoppingListService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: AIService, useValue: mockAIService },
+        { provide: PriceScraperService, useValue: mockPriceScraperService },
       ],
     }).compile();
 
