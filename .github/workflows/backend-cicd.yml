@@ -43,7 +43,7 @@ jobs:
         run: npm run build
 
       - name: Build docker image
-        run: docker build -f backend/Dockerfile -t dailycook-backend:${{ github.sha }} ..
+        run: docker build -f Dockerfile -t dailycook-backend:${{ github.sha }} ..
 
   deploy:
     name: Deploy to EC2
