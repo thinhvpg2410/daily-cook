@@ -61,5 +61,8 @@ jobs:
           script: |
             export PROJECT_DIR="${{ secrets.EC2_PROJECT_DIR }}"
             export BRANCH="feature/ai"
+            cd "$PROJECT_DIR"
+            git reset --hard
+            git clean -fd
             chmod +x "$PROJECT_DIR/scripts/deploy-ec2.sh"
             "$PROJECT_DIR/scripts/deploy-ec2.sh"

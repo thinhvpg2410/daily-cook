@@ -9,6 +9,8 @@ cd "$PROJECT_DIR"
 
 echo ">> Pulling latest source from branch: $BRANCH"
 git fetch origin
+git reset --hard
+git clean -fd
 git checkout "$BRANCH"
 git pull origin "$BRANCH"
 
