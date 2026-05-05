@@ -124,7 +124,7 @@ export class MealPlanService {
     return startOfDay(dt);
   }
 
-  private normalizeSlots(slots?: Record<string, string[]>): Slots {
+  private normalizeSlots(slots?: any): Slots {
     const s: Slots = {
       breakfast: Array.isArray(slots?.breakfast) ? slots.breakfast : [],
       lunch: Array.isArray(slots?.lunch) ? slots.lunch : [],
@@ -290,12 +290,12 @@ export class MealPlanService {
 
     if (!exists) {
       return this.prisma.mealPlan.create({
-        data: { userId, date, note: dto.note ?? null, slots },
+        data: { userId, date, note: dto.note ?? null, slots: slots as any },
       });
     }
     return this.prisma.mealPlan.update({
       where: { id: exists.id },
-      data: { note: dto.note ?? exists.note, slots },
+      data: { note: dto.note ?? exists.note, slots: slots as any },
     });
   }
 
@@ -307,7 +307,7 @@ export class MealPlanService {
 
   async update(userId: string, id: string, dto: UpdateMealPlanDto) {
     const r = await this.findOne(userId, id);
-    const slots = dto.slots ? this.normalizeSlots(dto.slots) : r.slots;
+    const slots = dto.slots ? this.normalizeSlots(dto.slots) : this.normalizeSlots(r.slots);
 
     // Validate recipe IDs if slots are provided
     if (dto.slots) {
@@ -331,7 +331,7 @@ export class MealPlanService {
 
     return this.prisma.mealPlan.update({
       where: { id: r.id },
-      data: { note: dto.note ?? r.note, slots },
+      data: { note: dto.note ?? r.note, slots: slots as any },
     });
   }
 
@@ -416,7 +416,7 @@ export class MealPlanService {
       slots[dto.slot] = Array.from(current);
     }
 
-    return this.prisma.mealPlan.update({ where: { id }, data: { slots } });
+    return this.prisma.mealPlan.update({ where: { id }, data: { slots: slots as any } });
   }
 
   async copyWeek(userId: string, from: string, to: string) {
@@ -445,7 +445,7 @@ export class MealPlanService {
         userId,
         date: startOfDay(addDays(toStart, diff)),
         note: p.note,
-        slots: p.slots,
+        slots: p.slots as any,
       };
     });
 

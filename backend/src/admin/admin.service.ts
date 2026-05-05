@@ -722,13 +722,13 @@ export class AdminService {
       }
 
       // Fetch recipe details for each slot
-      const slots = mealPlan.slots;
+      const slots = mealPlan.slots as any;
       const recipeIds: string[] = [];
 
-      if (slots) {
-        if (slots.breakfast) recipeIds.push(...slots.breakfast);
-        if (slots.lunch) recipeIds.push(...slots.lunch);
-        if (slots.dinner) recipeIds.push(...slots.dinner);
+      if (slots && typeof slots === "object" && !Array.isArray(slots)) {
+        if (Array.isArray(slots.breakfast)) recipeIds.push(...slots.breakfast);
+        if (Array.isArray(slots.lunch)) recipeIds.push(...slots.lunch);
+        if (Array.isArray(slots.dinner)) recipeIds.push(...slots.dinner);
       }
 
       const recipes =
