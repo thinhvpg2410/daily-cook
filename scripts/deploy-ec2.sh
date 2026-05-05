@@ -14,6 +14,10 @@ git clean -fd
 git checkout "$BRANCH"
 git pull origin "$BRANCH"
 
+echo ">> Cleaning up Docker system to free space before build..."
+docker system prune -f || true
+docker builder prune -af || true
+
 echo ">> Building and starting production stack"
 export PATH=$PATH:/usr/local/bin:/opt/bin
 
