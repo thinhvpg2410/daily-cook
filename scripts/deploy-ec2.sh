@@ -13,8 +13,14 @@ git checkout "$BRANCH"
 git pull origin "$BRANCH"
 
 echo ">> Building and starting production stack"
-docker compose -f docker-compose.prod.yml pull || true
-docker compose -f docker-compose.prod.yml up -d --build
+if command -v docker-compose &> /dev/null; then
+  COMPOSE_CMD="docker-compose"
+else
+  COMPOSE_CMD="docker compose"
+fi
+
+$COMPOSE_CMD -f docker-compose.prod.yml pull || true
+$COMPOSE_CMD -f docker-compose.prod.yml up -d --build
 
 echo ">> Cleaning dangling Docker images"
 docker image prune -f
