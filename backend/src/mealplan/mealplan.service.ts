@@ -124,11 +124,11 @@ export class MealPlanService {
     return startOfDay(dt);
   }
 
-  private normalizeSlots(slots?: Record<string, string[]>): Slots {
+  private normalizeSlots(slots?: any): Slots {
     const s: Slots = {
-      breakfast: Array.isArray(slots?.breakfast) ? slots!.breakfast : [],
-      lunch: Array.isArray(slots?.lunch) ? slots!.lunch : [],
-      dinner: Array.isArray(slots?.dinner) ? slots!.dinner : [],
+      breakfast: Array.isArray(slots?.breakfast) ? slots.breakfast : [],
+      lunch: Array.isArray(slots?.lunch) ? slots.lunch : [],
+      dinner: Array.isArray(slots?.dinner) ? slots.dinner : [],
     };
     return s;
   }
@@ -151,7 +151,7 @@ export class MealPlanService {
         id: r.id,
         date: formatISO(r.date, { representation: "date" }),
         note: r.note,
-        slots: r.slots as any as Slots,
+        slots: r.slots as Slots,
       }));
     } catch (error) {
       this.logger.error("Error in getRange:", error);
@@ -179,7 +179,7 @@ export class MealPlanService {
       };
     }
 
-    const slots = this.normalizeSlots(plan.slots as any);
+    const slots = this.normalizeSlots(plan.slots);
     const recipeIds = [
       ...(slots.breakfast ?? []),
       ...(slots.lunch ?? []),
@@ -290,12 +290,12 @@ export class MealPlanService {
 
     if (!exists) {
       return this.prisma.mealPlan.create({
-        data: { userId, date, note: dto.note ?? null, slots },
+        data: { userId, date, note: dto.note ?? null, slots: slots as any },
       });
     }
     return this.prisma.mealPlan.update({
       where: { id: exists.id },
-      data: { note: dto.note ?? exists.note, slots },
+      data: { note: dto.note ?? exists.note, slots: slots as any },
     });
   }
 
@@ -307,7 +307,7 @@ export class MealPlanService {
 
   async update(userId: string, id: string, dto: UpdateMealPlanDto) {
     const r = await this.findOne(userId, id);
-    const slots = dto.slots ? this.normalizeSlots(dto.slots) : (r.slots as any);
+    const slots = dto.slots ? this.normalizeSlots(dto.slots) : this.normalizeSlots(r.slots);
 
     // Validate recipe IDs if slots are provided
     if (dto.slots) {
@@ -331,7 +331,7 @@ export class MealPlanService {
 
     return this.prisma.mealPlan.update({
       where: { id: r.id },
-      data: { note: dto.note ?? r.note, slots },
+      data: { note: dto.note ?? r.note, slots: slots as any },
     });
   }
 
@@ -343,7 +343,7 @@ export class MealPlanService {
 
   async patchSlot(userId: string, id: string, dto: PatchSlotDto) {
     const r = await this.findOne(userId, id);
-    const slots = this.normalizeSlots(r.slots as any);
+    const slots = this.normalizeSlots(r.slots);
     const currentSlot = slots[dto.slot] ?? [];
 
     // Nếu có set, dùng set và bỏ qua add/remove
@@ -416,7 +416,7 @@ export class MealPlanService {
       slots[dto.slot] = Array.from(current);
     }
 
-    return this.prisma.mealPlan.update({ where: { id }, data: { slots } });
+    return this.prisma.mealPlan.update({ where: { id }, data: { slots: slots as any } });
   }
 
   async copyWeek(userId: string, from: string, to: string) {
@@ -468,7 +468,7 @@ export class MealPlanService {
 
     const recipeIds = new Set<string>();
     for (const p of plans) {
-      const s = p.slots as any as Slots;
+      const s = p.slots as Slots;
       (s.breakfast ?? []).forEach((id) => recipeIds.add(id));
       (s.lunch ?? []).forEach((id) => recipeIds.add(id));
       (s.dinner ?? []).forEach((id) => recipeIds.add(id));
@@ -969,7 +969,7 @@ export class MealPlanService {
       });
 
       const slots: Slots = exists
-        ? (exists.slots as any as Slots)
+        ? (exists.slots as Slots)
         : { breakfast: [], lunch: [], dinner: [] };
       const ids = result.map((r) => r.id);
 
@@ -1024,7 +1024,7 @@ export class MealPlanService {
     });
 
     if (existingPlan) {
-      const slots = this.normalizeSlots(existingPlan.slots as any);
+      const slots = this.normalizeSlots(existingPlan.slots);
       const recipeIds = [
         ...(slots.breakfast ?? []),
         ...(slots.lunch ?? []),

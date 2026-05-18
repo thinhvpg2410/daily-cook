@@ -193,7 +193,7 @@ describe("RecipesService", () => {
 
       mockPrisma.recipe.findUnique.mockResolvedValue(mockRecipe);
       mockPrisma.userFavoriteRecipe.findUnique.mockResolvedValue(
-        existingFavorite
+        existingFavorite,
       );
 
       const result = await service.addFavorite(userId, recipeId);
@@ -208,9 +208,9 @@ describe("RecipesService", () => {
 
       mockPrisma.recipe.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.addFavorite(userId, recipeId)
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.addFavorite(userId, recipeId)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -242,9 +242,9 @@ describe("RecipesService", () => {
 
       mockPrisma.userFavoriteRecipe.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.removeFavorite(userId, recipeId)
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.removeFavorite(userId, recipeId)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 

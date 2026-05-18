@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { ShoppingListService } from "./shopping-list.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { AIService } from "../ai/ai.service";
+import { PriceScraperService } from "../price-scraper/price-scraper.service";
 
 describe("ShoppingListService", () => {
   let service: ShoppingListService;
@@ -26,12 +27,17 @@ describe("ShoppingListService", () => {
     fetchIngredientMarketPrices: jest.fn(),
   };
 
+  const mockPriceScraperService = {
+    scrapePrice: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ShoppingListService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: AIService, useValue: mockAIService },
+        { provide: PriceScraperService, useValue: mockPriceScraperService },
       ],
     }).compile();
 
@@ -139,7 +145,7 @@ describe("ShoppingListService", () => {
         userId,
         recipeIds,
         title,
-        true
+        true,
       );
 
       expect(mockPrisma.recipe.findMany).toHaveBeenCalledWith({
@@ -204,7 +210,7 @@ describe("ShoppingListService", () => {
         userId,
         recipeIds,
         "Test List",
-        true
+        true,
       );
 
       expect(result.items[0].qty).toBe(800);
@@ -239,7 +245,7 @@ describe("ShoppingListService", () => {
         userId,
         recipeIds,
         "Test List",
-        false
+        false,
       );
 
       expect(mockPrisma.shoppingList.create).not.toHaveBeenCalled();
@@ -276,7 +282,7 @@ describe("ShoppingListService", () => {
         userId,
         recipeIds,
         "Test List",
-        false
+        false,
       );
 
       expect(result.items[0].unit).toBe("muỗng cà phê");
@@ -294,7 +300,7 @@ describe("ShoppingListService", () => {
         userId,
         recipeIds,
         "Empty List",
-        false
+        false,
       );
 
       expect(result.items).toHaveLength(0);

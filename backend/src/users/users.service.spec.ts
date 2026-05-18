@@ -128,7 +128,7 @@ describe("UsersService", () => {
 
       expect(argon2.verify).toHaveBeenCalledWith(
         "old_hashed_password",
-        dto.oldPassword
+        dto.oldPassword,
       );
       expect(argon2.hash).toHaveBeenCalledWith(dto.newPassword);
       expect(result).toEqual({ changed: true });
@@ -150,7 +150,7 @@ describe("UsersService", () => {
       (argon2.verify as jest.Mock).mockResolvedValue(false);
 
       await expect(service.changePassword(id, dto)).rejects.toThrow(
-        BadRequestException
+        BadRequestException,
       );
     });
 
@@ -169,7 +169,7 @@ describe("UsersService", () => {
       mockPrisma.user.findUnique.mockResolvedValue(mockUser);
 
       await expect(service.changePassword(id, dto)).rejects.toThrow(
-        BadRequestException
+        BadRequestException,
       );
     });
   });
@@ -231,7 +231,7 @@ describe("UsersService", () => {
       };
 
       mockPrisma.userPreference.findUnique.mockResolvedValue(
-        existingPreferences
+        existingPreferences,
       );
       mockPrisma.userPreference.update.mockResolvedValue(updatedPreferences);
 
@@ -279,7 +279,7 @@ describe("UsersService", () => {
       };
 
       mockPrisma.userPreference.findUnique.mockResolvedValue(
-        existingPreferences
+        existingPreferences,
       );
       mockPrisma.userPreference.update.mockResolvedValue({
         ...existingPreferences,
@@ -316,18 +316,18 @@ describe("UsersService", () => {
       const userId = "user-123";
       const invalidData = "";
 
-      await expect(
-        service.uploadAvatar(userId, invalidData)
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.uploadAvatar(userId, invalidData)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it("should throw BadRequestException for invalid base64 format", async () => {
       const userId = "user-123";
       const invalidBase64 = "invalid_base64_string";
 
-      await expect(
-        service.uploadAvatar(userId, invalidBase64)
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.uploadAvatar(userId, invalidBase64)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 });

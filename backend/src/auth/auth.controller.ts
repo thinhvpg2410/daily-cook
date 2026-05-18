@@ -1,5 +1,11 @@
 import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from "@nestjs/swagger";
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiBody,
+} from "@nestjs/swagger";
 import { AuthService } from "./auth.service";
 import { RegisterDto } from "./dto/register.dto";
 import { LoginDto } from "./dto/login.dto";
@@ -20,7 +26,10 @@ export class AuthController {
   @ApiOperation({ summary: "Đăng ký tài khoản mới" })
   @ApiResponse({ status: 201, description: "Đăng ký thành công" })
   @ApiResponse({ status: 400, description: "Dữ liệu không hợp lệ" })
-  @ApiResponse({ status: 409, description: "Email hoặc số điện thoại đã tồn tại" })
+  @ApiResponse({
+    status: 409,
+    description: "Email hoặc số điện thoại đã tồn tại",
+  })
   register(@Body() dto: RegisterDto) {
     return this.auth.register(dto.email, dto.password, dto.name, dto.phone);
   }
@@ -44,7 +53,7 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Get("me")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Lấy thông tin người dùng hiện tại" })
   @ApiResponse({ status: 200, description: "Thông tin người dùng" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
@@ -54,9 +63,12 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Post("2fa/init")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Khởi tạo xác thực 2 yếu tố (2FA)" })
-  @ApiResponse({ status: 200, description: "QR code và secret key để thiết lập 2FA" })
+  @ApiResponse({
+    status: 200,
+    description: "QR code và secret key để thiết lập 2FA",
+  })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
   init2fa(@CurrentUser() user: any) {
     return this.auth.enable2FA(user.userId);
@@ -64,7 +76,7 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Post("2fa/enable")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Kích hoạt xác thực 2 yếu tố (2FA)" })
   @ApiResponse({ status: 200, description: "Kích hoạt 2FA thành công" })
   @ApiResponse({ status: 400, description: "Mã xác thực không đúng" })
@@ -75,7 +87,10 @@ export class AuthController {
 
   @Post("forgot-password")
   @ApiOperation({ summary: "Quên mật khẩu - Gửi mã xác thực qua email" })
-  @ApiResponse({ status: 200, description: "Mã xác thực đã được gửi qua email" })
+  @ApiResponse({
+    status: 200,
+    description: "Mã xác thực đã được gửi qua email",
+  })
   @ApiResponse({ status: 404, description: "Email không tồn tại" })
   forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.auth.forgotPassword(dto.email);
@@ -84,7 +99,10 @@ export class AuthController {
   @Post("verify-reset-code")
   @ApiOperation({ summary: "Xác thực mã đặt lại mật khẩu" })
   @ApiResponse({ status: 200, description: "Mã xác thực hợp lệ" })
-  @ApiResponse({ status: 400, description: "Mã xác thực không đúng hoặc đã hết hạn" })
+  @ApiResponse({
+    status: 400,
+    description: "Mã xác thực không đúng hoặc đã hết hạn",
+  })
   verifyResetCode(@Body() dto: VerifyResetCodeDto) {
     return this.auth.verifyResetCode(dto.email, dto.code);
   }
@@ -92,7 +110,10 @@ export class AuthController {
   @Post("reset-password")
   @ApiOperation({ summary: "Đặt lại mật khẩu mới" })
   @ApiResponse({ status: 200, description: "Đặt lại mật khẩu thành công" })
-  @ApiResponse({ status: 400, description: "Mã xác thực không đúng hoặc đã hết hạn" })
+  @ApiResponse({
+    status: 400,
+    description: "Mã xác thực không đúng hoặc đã hết hạn",
+  })
   resetPassword(@Body() dto: ResetPasswordDto) {
     return this.auth.resetPassword(dto.email, dto.code, dto.newPassword);
   }

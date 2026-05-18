@@ -1,17 +1,21 @@
 import { IsOptional, IsString, IsObject } from "class-validator";
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty } from "@nestjs/swagger";
 
 export class UpdateMealPlanDto {
-  @ApiProperty({ description: 'Ghi chú', example: 'Cập nhật kế hoạch bữa ăn', required: false })
+  @ApiProperty({
+    description: "Ghi chú",
+    example: "Cập nhật kế hoạch bữa ăn",
+    required: false,
+  })
   @IsOptional()
   @IsString()
   note?: string;
 
-  @ApiProperty({ 
-    description: 'Các slot bữa ăn', 
-    example: { breakfast: ['recipe-id-1'], lunch: ['recipe-id-2'] },
+  @ApiProperty({
+    description: "Các slot bữa ăn",
+    example: { breakfast: ["recipe-id-1"], lunch: ["recipe-id-2"] },
     type: Object,
-    required: false
+    required: false,
   })
   @IsOptional()
   @IsObject()

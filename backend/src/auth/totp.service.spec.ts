@@ -25,7 +25,8 @@ describe("TotpService", () => {
         base32: "KBAWY3DPEHPK3PXP",
         hex: "48656c6c6f21deadbeef",
         qr_code_ascii: "otpauth://totp/...",
-        otpauth_url: "otpauth://totp/Test%20App%20%28user%40example.com%29?secret=JBSWY3DPEHPK3PXP",
+        otpauth_url:
+          "otpauth://totp/Test%20App%20%28user%40example.com%29?secret=JBSWY3DPEHPK3PXP",
       };
 
       (speakeasy.generateSecret as jest.Mock).mockReturnValue(mockSecret);
@@ -64,9 +65,7 @@ describe("TotpService", () => {
 
       (speakeasy.totp.verify as jest.Mock).mockReturnValue(false);
 
-      expect(() => service.verify(token, secret)).toThrow(
-        BadRequestException
-      );
+      expect(() => service.verify(token, secret)).toThrow(BadRequestException);
       expect(() => service.verify(token, secret)).toThrow("Mã 2FA không đúng");
     });
   });

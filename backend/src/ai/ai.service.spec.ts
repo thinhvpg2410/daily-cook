@@ -35,7 +35,9 @@ describe("AIService", () => {
 
   beforeEach(() => {
     process.env.OPENAI_API_KEY = "test_api_key";
-    (OpenAI as jest.MockedClass<typeof OpenAI>).mockImplementation(() => mockOpenAI as any);
+    (OpenAI as jest.MockedClass<typeof OpenAI>).mockImplementation(
+      () => mockOpenAI as any,
+    );
   });
 
   beforeEach(async () => {
@@ -61,10 +63,7 @@ describe("AIService", () => {
 
     it("should return false when API key is not set", () => {
       delete process.env.OPENAI_API_KEY;
-      const serviceWithoutKey = new AIService(
-        prisma,
-        mealPlanService as any
-      );
+      const serviceWithoutKey = new AIService(prisma, mealPlanService as any);
       expect(serviceWithoutKey.isEnabled()).toBe(false);
     });
   });
@@ -112,15 +111,12 @@ describe("AIService", () => {
 
     it("should throw BadRequestException if AI service is not configured", async () => {
       delete process.env.OPENAI_API_KEY;
-      const serviceWithoutKey = new AIService(
-        prisma,
-        mealPlanService as any
-      );
+      const serviceWithoutKey = new AIService(prisma, mealPlanService as any);
 
       await expect(
         serviceWithoutKey.fetchIngredientMarketPrices([
           { name: "Test", unit: "kg" },
-        ])
+        ]),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -145,7 +141,7 @@ describe("AIService", () => {
       mockOpenAI.chat.completions.create.mockResolvedValue(mockResponse as any);
 
       await expect(
-        service.fetchIngredientMarketPrices(ingredients)
+        service.fetchIngredientMarketPrices(ingredients),
       ).rejects.toThrow(BadRequestException);
     });
   });
@@ -160,13 +156,10 @@ describe("AIService", () => {
 
     it("should throw BadRequestException if AI service is not configured", async () => {
       delete process.env.OPENAI_API_KEY;
-      const serviceWithoutKey = new AIService(
-        prisma,
-        mealPlanService as any
-      );
+      const serviceWithoutKey = new AIService(prisma, mealPlanService as any);
 
       await expect(serviceWithoutKey.listAvailableModels()).rejects.toThrow(
-        BadRequestException
+        BadRequestException,
       );
     });
   });
@@ -186,7 +179,7 @@ describe("AIService", () => {
 
       mockPrisma.userPreference.findUnique.mockResolvedValue(mockPreferences);
       mockPrisma.mealPlan.findMany.mockResolvedValue([]);
-      
+
       const mockResponse = {
         choices: [
           {
@@ -207,13 +200,10 @@ describe("AIService", () => {
 
     it("should throw BadRequestException if AI service is not configured", async () => {
       delete process.env.OPENAI_API_KEY;
-      const serviceWithoutKey = new AIService(
-        prisma,
-        mealPlanService as any
-      );
+      const serviceWithoutKey = new AIService(prisma, mealPlanService as any);
 
       await expect(
-        serviceWithoutKey.chatWithUser("user-123", "Hello")
+        serviceWithoutKey.chatWithUser("user-123", "Hello"),
       ).rejects.toThrow(BadRequestException);
     });
   });
@@ -257,7 +247,7 @@ describe("AIService", () => {
         params.height,
         params.weight,
         params.activity,
-        params.goal
+        params.goal,
       );
 
       expect(result).toHaveProperty("bmr");
@@ -299,7 +289,7 @@ describe("AIService", () => {
         params.height,
         params.weight,
         params.activity,
-        params.goal
+        params.goal,
       );
 
       // Should still return calculated values with fallback
@@ -338,10 +328,7 @@ describe("AIService", () => {
       };
 
       const mockAIResponse = {
-        tips: [
-          "💡 Duy trì chế độ ăn cân bằng",
-          "🥗 Ăn nhiều rau xanh",
-        ],
+        tips: ["💡 Duy trì chế độ ăn cân bằng", "🥗 Ăn nhiều rau xanh"],
         summary: "Chế độ ăn của bạn đang tốt",
         week: "7 ngày qua",
       };

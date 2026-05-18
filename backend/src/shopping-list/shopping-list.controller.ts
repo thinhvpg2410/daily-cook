@@ -1,5 +1,11 @@
 import { Body, Controller, Post, UseGuards } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from "@nestjs/swagger";
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiBody,
+} from "@nestjs/swagger";
 import { ShoppingListService } from "./shopping-list.service";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { CurrentUser } from "../common/decorators/user.decorator";
@@ -11,23 +17,31 @@ export class ShoppingListController {
   constructor(private readonly s: ShoppingListService) {}
 
   @Post("from-recipes")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Tạo danh sách mua sắm từ các công thức" })
   @ApiBody({
     schema: {
       type: "object",
       properties: {
-        title: { type: "string", description: "Tiêu đề danh sách", example: "Danh sách mua sắm" },
-        recipeIds: { 
-          type: "array", 
+        title: {
+          type: "string",
+          description: "Tiêu đề danh sách",
+          example: "Danh sách mua sắm",
+        },
+        recipeIds: {
+          type: "array",
           items: { type: "string" },
           description: "Danh sách ID công thức",
-          example: ["recipe-id-1", "recipe-id-2"]
+          example: ["recipe-id-1", "recipe-id-2"],
         },
-        persist: { type: "boolean", description: "Lưu danh sách vào database", example: true }
+        persist: {
+          type: "boolean",
+          description: "Lưu danh sách vào database",
+          example: true,
+        },
       },
-      required: ["recipeIds"]
-    }
+      required: ["recipeIds"],
+    },
   })
   @ApiResponse({ status: 201, description: "Tạo danh sách mua sắm thành công" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })

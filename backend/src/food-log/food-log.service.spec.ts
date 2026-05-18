@@ -125,7 +125,7 @@ describe("FoodLogService", () => {
       mockPrisma.recipe.findUnique.mockResolvedValue(null);
 
       await expect(service.create(userId, dto)).rejects.toThrow(
-        NotFoundException
+        NotFoundException,
       );
     });
 
@@ -138,7 +138,7 @@ describe("FoodLogService", () => {
       };
 
       await expect(service.create(userId, dto)).rejects.toThrow(
-        BadRequestException
+        BadRequestException,
       );
     });
   });
@@ -206,7 +206,7 @@ describe("FoodLogService", () => {
               lte: expect.any(Date),
             }),
           }),
-        })
+        }),
       );
     });
   });
@@ -291,7 +291,7 @@ describe("FoodLogService", () => {
       mockPrisma.foodLog.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne(userId, id)).rejects.toThrow(
-        NotFoundException
+        NotFoundException,
       );
     });
   });

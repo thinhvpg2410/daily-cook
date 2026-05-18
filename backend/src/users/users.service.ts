@@ -9,7 +9,7 @@ import { FirebaseAdmin } from "../auth/firebase-admin.provider";
 export class UsersService {
   constructor(
     private prisma: PrismaService,
-    @Inject(FirebaseAdmin) private firebaseAdmin: admin.app.App
+    @Inject(FirebaseAdmin) private firebaseAdmin: admin.app.App,
   ) {}
 
   getById(id: string) {
@@ -61,7 +61,7 @@ export class UsersService {
     const preferences = await this.prisma.userPreference.findUnique({
       where: { userId },
     });
-    
+
     // Return default preferences if not found
     if (!preferences) {
       return {
@@ -78,7 +78,7 @@ export class UsersService {
         likedTags: [],
       };
     }
-    
+
     return preferences;
   }
 
@@ -88,7 +88,7 @@ export class UsersService {
     });
 
     const updateData: any = {};
-    
+
     // Chỉ update các field được gửi lên (không phải undefined)
     if (dto.gender !== undefined) updateData.gender = dto.gender;
     if (dto.age !== undefined) updateData.age = dto.age;
@@ -96,9 +96,11 @@ export class UsersService {
     if (dto.weight !== undefined) updateData.weight = dto.weight;
     if (dto.activity !== undefined) updateData.activity = dto.activity;
     if (dto.goal !== undefined) updateData.goal = dto.goal;
-    if (dto.dailyKcalTarget !== undefined) updateData.dailyKcalTarget = dto.dailyKcalTarget;
+    if (dto.dailyKcalTarget !== undefined)
+      updateData.dailyKcalTarget = dto.dailyKcalTarget;
     if (dto.dietType !== undefined) updateData.dietType = dto.dietType;
-    if (dto.dislikedIngredients !== undefined) updateData.dislikedIngredients = dto.dislikedIngredients;
+    if (dto.dislikedIngredients !== undefined)
+      updateData.dislikedIngredients = dto.dislikedIngredients;
     if (dto.likedTags !== undefined) updateData.likedTags = dto.likedTags;
 
     if (existing) {
@@ -119,15 +121,18 @@ export class UsersService {
     });
   }
 
-  async uploadAvatar(userId: string, imageData: string): Promise<{ avatarUrl: string }> {
+  async uploadAvatar(
+    userId: string,
+    imageData: string,
+  ): Promise<{ avatarUrl: string }> {
     try {
       // Validate imageData (base64 data URL hoặc URL)
-      if (!imageData || typeof imageData !== 'string') {
+      if (!imageData || typeof imageData !== "string") {
         throw new BadRequestException("Dữ liệu ảnh không hợp lệ");
       }
 
       // Nếu là URL từ internet, giữ nguyên
-      if (imageData.startsWith('http://') || imageData.startsWith('https://')) {
+      if (imageData.startsWith("http://") || imageData.startsWith("https://")) {
         // Update avatarUrl trong database
         await this.prisma.user.update({
           where: { id: userId },
@@ -137,8 +142,10 @@ export class UsersService {
       }
 
       // Nếu là base64 data URL, upload lên Firebase Storage
-      if (!imageData.startsWith('data:image/')) {
-        throw new BadRequestException("Định dạng ảnh không hợp lệ. Vui lòng gửi base64 data URL hoặc URL.");
+      if (!imageData.startsWith("data:image/")) {
+        throw new BadRequestException(
+          "Định dạng ảnh không hợp lệ. Vui lòng gửi base64 data URL hoặc URL.",
+        );
       }
 
       // Parse base64 data URL
@@ -147,16 +154,18 @@ export class UsersService {
         throw new BadRequestException("Định dạng base64 không hợp lệ");
       }
 
-      const imageType = matches[1] || 'jpeg';
+      const imageType = matches[1] || "jpeg";
       const base64Data = matches[2];
 
       // Convert base64 sang Buffer
-      const buffer = Buffer.from(base64Data, 'base64');
+      const buffer = Buffer.from(base64Data, "base64");
 
       // Kiểm tra kích thước (max 2MB)
       const maxSize = 2 * 1024 * 1024; // 2MB
       if (buffer.length > maxSize) {
-        throw new BadRequestException("Ảnh quá lớn. Vui lòng chọn ảnh nhỏ hơn 2MB.");
+        throw new BadRequestException(
+          "Ảnh quá lớn. Vui lòng chọn ảnh nhỏ hơn 2MB.",
+        );
       }
 
       // Tạo reference trong Firebase Storage
@@ -170,7 +179,7 @@ export class UsersService {
       await file.save(buffer, {
         metadata: {
           contentType: `image/${imageType}`,
-          cacheControl: 'public, max-age=31536000',
+          cacheControl: "public, max-age=31536000",
         },
         public: true, // Make file publicly accessible
       });
@@ -194,7 +203,7 @@ export class UsersService {
         throw error;
       }
       throw new BadRequestException(
-        error.message || "Không thể upload ảnh. Vui lòng thử lại."
+        error.message || "Không thể upload ảnh. Vui lòng thử lại.",
       );
     }
   }

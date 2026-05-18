@@ -10,4 +10,3 @@ import { PriceScraperModule } from "../price-scraper/price-scraper.module";
   exports: [AdminService],
 })
 export class AdminModule {}
-

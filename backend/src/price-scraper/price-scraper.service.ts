@@ -47,7 +47,11 @@ export class PriceScraperService {
     }
 
     // Convert lít/liter to ml
-    if (normalized.includes("lít") || normalized.includes("liter") || normalized.includes("l")) {
+    if (
+      normalized.includes("lít") ||
+      normalized.includes("liter") ||
+      normalized.includes("l")
+    ) {
       return "ml";
     }
 
@@ -70,7 +74,10 @@ export class PriceScraperService {
    * - "22.000đ/500g" -> 44 (VND/g)
    * - "150.000đ/kg" -> 150 (VND/g)
    */
-  private normalizePrice(priceText: string, unit: string): { pricePerUnit: number; unit: string } | null {
+  private normalizePrice(
+    priceText: string,
+    unit: string,
+  ): { pricePerUnit: number; unit: string } | null {
     if (!priceText) return null;
 
     // Remove all spaces and convert to lowercase
@@ -97,7 +104,9 @@ export class PriceScraperService {
     if (isNaN(price) || price <= 0) return null;
 
     // Check if price includes unit (e.g., "22.000đ/500g", "150.000đ/kg")
-    const unitMatch = cleaned.match(/\/(\d+(?:[.,]\d+)*)\s*(g|kg|ml|l|lít|liter|chai|gói)/i);
+    const unitMatch = cleaned.match(
+      /\/(\d+(?:[.,]\d+)*)\s*(g|kg|ml|l|lít|liter|chai|gói)/i,
+    );
     if (unitMatch) {
       const quantityStr = unitMatch[1].replace(/[,.]/g, "");
       const quantity = parseFloat(quantityStr);
@@ -109,7 +118,11 @@ export class PriceScraperService {
       if (priceUnit === "kg") {
         price = price / (quantity * 1000); // Convert to price per gram
         return { pricePerUnit: Math.round(price * 100) / 100, unit: "g" };
-      } else if (priceUnit === "l" || priceUnit === "lít" || priceUnit === "liter") {
+      } else if (
+        priceUnit === "l" ||
+        priceUnit === "lít" ||
+        priceUnit === "liter"
+      ) {
         price = price / (quantity * 1000); // Convert to price per ml
         return { pricePerUnit: Math.round(price * 100) / 100, unit: "ml" };
       } else if (priceUnit === "chai" || priceUnit === "gói") {
@@ -124,7 +137,10 @@ export class PriceScraperService {
 
     // If no unit specified, assume it's the total price for the default unit
     const normalizedUnit = this.normalizeUnit(unit);
-    return { pricePerUnit: Math.round(price * 100) / 100, unit: normalizedUnit };
+    return {
+      pricePerUnit: Math.round(price * 100) / 100,
+      unit: normalizedUnit,
+    };
   }
 
   /**
@@ -144,11 +160,13 @@ export class PriceScraperService {
       await page.goto(searchUrl, { waitUntil: "networkidle2", timeout: 30000 });
 
       // Wait for search results to load
-      await page.waitForSelector(".product-item, .product, [class*='product']", {
-        timeout: 10000,
-      }).catch(() => {
-        this.logger.warn(`No products found for keyword: ${keyword}`);
-      });
+      await page
+        .waitForSelector(".product-item, .product, [class*='product']", {
+          timeout: 10000,
+        })
+        .catch(() => {
+          this.logger.warn(`No products found for keyword: ${keyword}`);
+        });
 
       // Try to find the first product
       const productData = await page.evaluate(() => {
@@ -199,7 +217,8 @@ export class PriceScraperService {
         for (const selector of nameSelectors) {
           const nameEl = productElement.querySelector(selector);
           if (nameEl) {
-            name = nameEl.textContent?.trim() || nameEl.getAttribute("title") || "";
+            name =
+              nameEl.textContent?.trim() || nameEl.getAttribute("title") || "";
             if (name) break;
           }
         }
@@ -242,14 +261,21 @@ export class PriceScraperService {
       });
 
       if (!productData || !productData.price) {
-        this.logger.warn(`Could not extract product data for keyword: ${keyword}`);
+        this.logger.warn(
+          `Could not extract product data for keyword: ${keyword}`,
+        );
         return null;
       }
 
       // Normalize price
-      const normalizedPrice = this.normalizePrice(productData.price, productData.unit);
+      const normalizedPrice = this.normalizePrice(
+        productData.price,
+        productData.unit,
+      );
       if (!normalizedPrice) {
-        this.logger.warn(`Could not normalize price for keyword: ${keyword}, price: ${productData.price}`);
+        this.logger.warn(
+          `Could not normalize price for keyword: ${keyword}, price: ${productData.price}`,
+        );
         return null;
       }
 
@@ -261,7 +287,9 @@ export class PriceScraperService {
         source: `Bách Hóa Xanh - ${new Date().toLocaleDateString("vi-VN")}`,
       };
     } catch (error) {
-      this.logger.error(`Error searching for product "${keyword}": ${error.message}`);
+      this.logger.error(
+        `Error searching for product "${keyword}": ${error.message}`,
+      );
       return null;
     } finally {
       await page.close();
@@ -292,7 +320,9 @@ export class PriceScraperService {
     try {
       for (const ingredient of ingredients) {
         const keyword = this.mapKeyword(ingredient.name);
-        this.logger.log(`Searching for: ${ingredient.name} (keyword: ${keyword})`);
+        this.logger.log(
+          `Searching for: ${ingredient.name} (keyword: ${keyword})`,
+        );
 
         const price = await this.searchProduct(browser, keyword);
         if (price) {
@@ -321,7 +351,9 @@ export class PriceScraperService {
    * This method updates ALL ingredients regardless of whether they already have prices
    */
   async updateAllIngredientPrices(): Promise<void> {
-    this.logger.log("Starting daily price update for ALL ingredients (including those with existing prices)...");
+    this.logger.log(
+      "Starting daily price update for ALL ingredients (including those with existing prices)...",
+    );
 
     // Get ALL ingredients - no filtering by priceUpdatedAt
     const ingredients = await this.prisma.ingredient.findMany({
@@ -333,11 +365,16 @@ export class PriceScraperService {
       return;
     }
 
-    this.logger.log(`Found ${ingredients.length} ingredients to update (all ingredients will be processed)`);
+    this.logger.log(
+      `Found ${ingredients.length} ingredients to update (all ingredients will be processed)`,
+    );
 
     // Scrape prices for all ingredients
     const priceMap = await this.scrapePrices(
-      ingredients.map((ing) => ({ name: ing.name, unit: ing.unit || undefined })),
+      ingredients.map((ing) => ({
+        name: ing.name,
+        unit: ing.unit || undefined,
+      })),
     );
 
     // Update database - update ALL ingredients, even if price not found
@@ -384,4 +421,3 @@ export class PriceScraperService {
     );
   }
 }
-

@@ -19,52 +19,69 @@ export class EmailService {
       this.logger.log("Mailjet initialized successfully");
     } else {
       this.logger.warn(
-        "Mailjet credentials not found. Email sending will be disabled. Please set MAILJET_API_KEY and MAILJET_API_SECRET in .env"
+        "Mailjet credentials not found. Email sending will be disabled. Please set MAILJET_API_KEY and MAILJET_API_SECRET in .env",
       );
     }
   }
 
-  async sendForgotPasswordEmail(email: string, code: string, userName?: string): Promise<void> {
+  async sendForgotPasswordEmail(
+    email: string,
+    code: string,
+    userName?: string,
+  ): Promise<void> {
     if (!this.mailjet) {
       this.logger.error("Mailjet not initialized. Cannot send email.");
       throw new Error("Email service is not configured");
     }
 
-    const fromEmail = this.configService.get<string>("MAILJET_FROM_EMAIL") || "noreply@dailycook.com";
-    const fromName = this.configService.get<string>("MAILJET_FROM_NAME") || "DailyCook";
+    const fromEmail =
+      this.configService.get<string>("MAILJET_FROM_EMAIL") ||
+      "noreply@dailycook.com";
+    const fromName =
+      this.configService.get<string>("MAILJET_FROM_NAME") || "DailyCook";
 
-    const emailHtml = this.getForgotPasswordEmailTemplate(code, userName || "Người dùng");
+    const emailHtml = this.getForgotPasswordEmailTemplate(
+      code,
+      userName || "Người dùng",
+    );
 
     try {
-      const result = await this.mailjet.post("send", { version: "v3.1" }).request({
-        Messages: [
-          {
-            From: {
-              Email: fromEmail,
-              Name: fromName,
-            },
-            To: [
-              {
-                Email: email,
-                Name: userName || "Người dùng",
+      const result = await this.mailjet
+        .post("send", { version: "v3.1" })
+        .request({
+          Messages: [
+            {
+              From: {
+                Email: fromEmail,
+                Name: fromName,
               },
-            ],
-            Subject: "Mã xác thực đặt lại mật khẩu - DailyCook",
-            HTMLPart: emailHtml,
-            TextPart: `Mã xác thực đặt lại mật khẩu của bạn là: ${code}. Mã này có hiệu lực trong 10 phút.`,
-          },
-        ],
-      });
+              To: [
+                {
+                  Email: email,
+                  Name: userName || "Người dùng",
+                },
+              ],
+              Subject: "Mã xác thực đặt lại mật khẩu - DailyCook",
+              HTMLPart: emailHtml,
+              TextPart: `Mã xác thực đặt lại mật khẩu của bạn là: ${code}. Mã này có hiệu lực trong 10 phút.`,
+            },
+          ],
+        });
 
       this.logger.log(`Password reset email sent successfully to ${email}`);
       return result.body as any;
     } catch (error: any) {
       this.logger.error(`Failed to send email to ${email}:`, error);
-      throw new Error(`Failed to send email: ${error.message || "Unknown error"}`);
+      throw new Error(
+        `Failed to send email: ${error.message || "Unknown error"}`,
+      );
     }
   }
 
-  private getForgotPasswordEmailTemplate(code: string, userName: string): string {
+  private getForgotPasswordEmailTemplate(
+    code: string,
+    userName: string,
+  ): string {
     return `
 <!DOCTYPE html>
 <html lang="vi">
@@ -133,4 +150,3 @@ export class EmailService {
     `.trim();
   }
 }
-

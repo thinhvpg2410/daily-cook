@@ -43,7 +43,7 @@ jobs:
         run: npm run build
 
       - name: Build docker image
-        run: docker build -f backend/Dockerfile -t dailycook-backend:${{ github.sha }} ..
+        run: docker build -f Dockerfile -t dailycook-backend:${{ github.sha }} ..
 
   deploy:
     name: Deploy to EC2
@@ -61,5 +61,9 @@ jobs:
           script: |
             export PROJECT_DIR="${{ secrets.EC2_PROJECT_DIR }}"
             export BRANCH="feature/ai"
-            chmod +x "$PROJECT_DIR/scripts/deploy-ec2.sh"
-            "$PROJECT_DIR/scripts/deploy-ec2.sh"
+            cd "$PROJECT_DIR"
+            git fetch origin
+            git reset --hard "origin/$BRANCH"
+            git clean -fd
+            chmod +x scripts/deploy-ec2.sh
+            ./scripts/deploy-ec2.sh

@@ -9,7 +9,14 @@ import {
   Query,
   UseGuards,
 } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from "@nestjs/swagger";
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+  ApiQuery,
+} from "@nestjs/swagger";
 import { FoodLogService } from "./food-log.service";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { CurrentUser } from "../common/decorators/user.decorator";
@@ -24,7 +31,7 @@ export class FoodLogController {
   constructor(private readonly service: FoodLogService) {}
 
   @Post()
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Tạo bản ghi ăn uống mới" })
   @ApiResponse({ status: 201, description: "Tạo bản ghi thành công" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
@@ -33,7 +40,7 @@ export class FoodLogController {
   }
 
   @Get()
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Lấy danh sách bản ghi ăn uống" })
   @ApiResponse({ status: 200, description: "Danh sách bản ghi ăn uống" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
@@ -42,10 +49,18 @@ export class FoodLogController {
   }
 
   @Get("stats")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Lấy thống kê dinh dưỡng theo khoảng thời gian" })
-  @ApiQuery({ name: "start", description: "Ngày bắt đầu (ISO 8601)", required: true })
-  @ApiQuery({ name: "end", description: "Ngày kết thúc (ISO 8601)", required: true })
+  @ApiQuery({
+    name: "start",
+    description: "Ngày bắt đầu (ISO 8601)",
+    required: true,
+  })
+  @ApiQuery({
+    name: "end",
+    description: "Ngày kết thúc (ISO 8601)",
+    required: true,
+  })
   @ApiResponse({ status: 200, description: "Thống kê dinh dưỡng" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
   getStats(
@@ -57,35 +72,44 @@ export class FoodLogController {
   }
 
   @Get("cooking-stats")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Lấy thống kê món nấu nhiều nhất" })
-  @ApiQuery({ name: "limit", description: "Số lượng món muốn lấy", required: false, type: Number })
+  @ApiQuery({
+    name: "limit",
+    description: "Số lượng món muốn lấy",
+    required: false,
+    type: Number,
+  })
   @ApiResponse({ status: 200, description: "Thống kê món nấu nhiều nhất" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
-  getCookingStats(
-    @CurrentUser() user: any,
-    @Query("limit") limit?: string,
-  ) {
+  getCookingStats(@CurrentUser() user: any, @Query("limit") limit?: string) {
     const limitNum = limit ? parseInt(limit, 10) : 10;
     return this.service.getCookingStats(user.userId, limitNum);
   }
 
   @Get("cooking-history")
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: "Lấy lịch sử nấu ăn với logic nhắc nhở tránh trùng lặp thông minh" })
-  @ApiQuery({ name: "start", description: "Ngày bắt đầu (ISO 8601)", required: false })
-  @ApiQuery({ name: "end", description: "Ngày kết thúc (ISO 8601)", required: false })
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary: "Lấy lịch sử nấu ăn với logic nhắc nhở tránh trùng lặp thông minh",
+  })
+  @ApiQuery({
+    name: "start",
+    description: "Ngày bắt đầu (ISO 8601)",
+    required: false,
+  })
+  @ApiQuery({
+    name: "end",
+    description: "Ngày kết thúc (ISO 8601)",
+    required: false,
+  })
   @ApiResponse({ status: 200, description: "Lịch sử nấu ăn với cảnh báo" })
   @ApiResponse({ status: 401, description: "Chưa đăng nhập" })
-  getCookingHistory(
-    @CurrentUser() user: any,
-    @Query() query: QueryFoodLogDto,
-  ) {
+  getCookingHistory(@CurrentUser() user: any, @Query() query: QueryFoodLogDto) {
     return this.service.getCookingHistory(user.userId, query);
   }
 
   @Get(":id")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Lấy thông tin chi tiết bản ghi ăn uống" })
   @ApiParam({ name: "id", description: "ID bản ghi" })
   @ApiResponse({ status: 200, description: "Thông tin bản ghi" })
@@ -96,7 +120,7 @@ export class FoodLogController {
   }
 
   @Patch(":id")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Cập nhật bản ghi ăn uống" })
   @ApiParam({ name: "id", description: "ID bản ghi" })
   @ApiResponse({ status: 200, description: "Cập nhật thành công" })
@@ -111,7 +135,7 @@ export class FoodLogController {
   }
 
   @Delete(":id")
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Xóa bản ghi ăn uống" })
   @ApiParam({ name: "id", description: "ID bản ghi" })
   @ApiResponse({ status: 200, description: "Xóa thành công" })
@@ -121,4 +145,3 @@ export class FoodLogController {
     return this.service.remove(user.userId, id);
   }
 }
-

@@ -157,7 +157,9 @@ Trả về JSON object với format: {"prices": [...]}`;
     }
 
     // Fallback (không bao giờ đến đây, nhưng TypeScript cần)
-    throw lastError || new BadRequestException("Không thể lấy giá nguyên liệu.");
+    throw (
+      lastError || new BadRequestException("Không thể lấy giá nguyên liệu.")
+    );
   }
 
   async listAvailableModels() {
@@ -253,15 +255,17 @@ QUAN TRỌNG:
 - Luôn ưu tiên sức khỏe và dinh dưỡng của người dùng`;
 
       // Build conversation history for OpenAI format
-      const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
-        { role: "system", content: systemPrompt },
-      ];
+      const messages: Array<{
+        role: "system" | "user" | "assistant";
+        content: string;
+      }> = [{ role: "system", content: systemPrompt }];
 
       // Add initial greeting if no history
       if (conversationHistory.length === 0) {
         messages.push({
           role: "assistant",
-          content: "Xin chào! Tôi là trợ lý AI của DailyCook. Tôi có thể giúp bạn tìm món ăn phù hợp. Bạn muốn ăn gì hôm nay? 😊",
+          content:
+            "Xin chào! Tôi là trợ lý AI của DailyCook. Tôi có thể giúp bạn tìm món ăn phù hợp. Bạn muốn ăn gì hôm nay? 😊",
         });
       }
 
@@ -754,7 +758,11 @@ CHỈ TRẢ VỀ JSON, KHÔNG CÓ TEXT HAY MARKDOWN KHÁC.`;
       return {
         tips: aiResult.tips.slice(0, 7), // Giới hạn tối đa 7 tips
         summary: aiResult.summary || "Phân tích dinh dưỡng của bạn",
-        week: aiResult.week || (nutritionData.weekStart ? `Tuần từ ${nutritionData.weekStart} đến ${nutritionData.weekEnd}` : "7 ngày qua"),
+        week:
+          aiResult.week ||
+          (nutritionData.weekStart
+            ? `Tuần từ ${nutritionData.weekStart} đến ${nutritionData.weekEnd}`
+            : "7 ngày qua"),
         generatedAt: new Date().toISOString(),
       };
     } catch (error: any) {

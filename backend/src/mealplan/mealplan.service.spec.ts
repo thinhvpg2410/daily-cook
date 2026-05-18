@@ -93,7 +93,12 @@ describe("MealPlanService", () => {
       mockPrisma.userPreference.findUnique.mockResolvedValue(mockPreferences);
       mockPrisma.recipe.findMany.mockResolvedValue(mockRecipes);
 
-      const result = await service.suggestMeal(userId, region, dietType, targetKcal);
+      const result = await service.suggestMeal(
+        userId,
+        region,
+        dietType,
+        targetKcal,
+      );
 
       expect(result).toHaveProperty("recipes");
       expect(result).toHaveProperty("totalKcal");
@@ -299,7 +304,7 @@ describe("MealPlanService", () => {
       mockPrisma.recipe.count.mockResolvedValue(0);
 
       await expect(service.upsert(userId, dto)).rejects.toThrow(
-        BadRequestException
+        BadRequestException,
       );
     });
   });
@@ -331,7 +336,7 @@ describe("MealPlanService", () => {
       mockPrisma.mealPlan.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne(userId, id)).rejects.toThrow(
-        NotFoundException
+        NotFoundException,
       );
     });
   });
@@ -418,7 +423,7 @@ describe("MealPlanService", () => {
 
       const result = await service.patchSlot(userId, id, dto);
 
-      const slots = result.slots as any;
+      const slots = result.slots;
       expect(slots.breakfast).toEqual(dto.set);
     });
 
@@ -453,7 +458,7 @@ describe("MealPlanService", () => {
 
       const result = await service.patchSlot(userId, id, dto);
 
-      const slots = result.slots as any;
+      const slots = result.slots;
       expect(slots.breakfast).toContain(dto.add);
     });
 
@@ -484,7 +489,7 @@ describe("MealPlanService", () => {
 
       const result = await service.patchSlot(userId, id, dto);
 
-      const slots = result.slots as any;
+      const slots = result.slots;
       expect(slots.breakfast).not.toContain(dto.remove);
       expect(slots.breakfast).toContain("recipe-2");
     });
@@ -509,7 +514,7 @@ describe("MealPlanService", () => {
       mockPrisma.recipe.findUnique.mockResolvedValue(null);
 
       await expect(service.patchSlot(userId, id, dto)).rejects.toThrow(
-        BadRequestException
+        BadRequestException,
       );
     });
 
@@ -532,7 +537,7 @@ describe("MealPlanService", () => {
       mockPrisma.mealPlan.findFirst.mockResolvedValue(existingPlan);
 
       await expect(service.patchSlot(userId, id, dto)).rejects.toThrow(
-        BadRequestException
+        BadRequestException,
       );
     });
   });
@@ -710,7 +715,7 @@ describe("MealPlanService", () => {
       const result = await service.shoppingListFromRange(
         userId,
         startIso,
-        endIso
+        endIso,
       );
 
       expect(result).toHaveProperty("items");
