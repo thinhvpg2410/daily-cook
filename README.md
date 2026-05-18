@@ -1,497 +1,467 @@
-# 🍳 DailyCook - Ứng dụng Quản lý Thực đơn & Dinh dưỡng
-
-DailyCook là một ứng dụng mobile toàn diện giúp người dùng quản lý thực đơn hàng ngày, theo dõi dinh dưỡng, và nhận gợi ý món ăn thông minh từ AI.
+# DailyCook
 
 ![DailyCook](https://img.shields.io/badge/DailyCook-v1.0-blue)
-![React Native](https://img.shields.io/badge/React%20Native-0.79.6-61DAFB)
-![NestJS](https://img.shields.io/badge/NestJS-11.1.6-E0234E)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.7.3-3178C6)
+![React Native](https://img.shields.io/badge/React%20Native-0.81.5-61DAFB)
+![Expo](https://img.shields.io/badge/Expo-54-000020)
+![NestJS](https://img.shields.io/badge/NestJS-11.1.9-E0234E)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.7–5.9-3178C6)
 
-## 📱 Tính năng chính
+## Overview
 
-### 🎯 Quản lý Thực đơn
-- **Lịch ăn hàng ngày**: Lập kế hoạch bữa ăn cho cả tuần
-- **Gợi ý thông minh**: AI gợi ý món ăn dựa trên sở thích và mục tiêu
-- **Phân loại bữa ăn**: Sáng, Trưa, Tối với nhiều món
-- **Copy tuần**: Sao chép thực đơn từ tuần này sang tuần khác
+**DailyCook** is a **graduation thesis project** (đồ án tốt nghiệp) — a TypeScript monorepo for meal planning and nutrition tracking. It helps users plan weekly meals, log food, hit macro goals, generate shopping lists, and get AI-powered recipe suggestions.
 
-### 🤖 AI-Powered Suggestions
-- **Chat với AI**: Tương tác tự nhiên để tìm món ăn phù hợp
-- **Gợi ý theo ngữ cảnh**: Dựa trên preferences, lịch sử, và mục tiêu dinh dưỡng
-- **Gemini 2.0 Flash**: Sử dụng Google Gemini AI cho gợi ý chính xác
+The repository contains **three applications**:
 
-### 📊 Theo dõi Dinh dưỡng
-- **Nutrition Goals**: Thiết lập mục tiêu calo và macros (protein, fat, carbs)
-- **Food Logging**: Ghi lại các bữa ăn đã ăn
-- **Thống kê hàng ngày**: Xem tiến độ so với mục tiêu
-- **BMR/TDEE Calculator**: Tự động tính toán nhu cầu năng lượng
+| App | Path | Role |
+|-----|------|------|
+| Mobile / Web | `frontend/` | Expo (React Native) client for iOS, Android, and web |
+| API | `backend/` | NestJS REST API with Prisma and PostgreSQL |
+| Admin | `admin-dashboard/` | Internal ops UI (users, recipes, ingredients, logs) |
 
-### 🛒 Danh sách Mua sắm
-- **Tự động tạo**: Từ meal plans đã lập
-- **Quản lý nguyên liệu**: Check/uncheck items
-- **Theo tuần**: Shopping list cho cả tuần
+**Scale (measured from repo):** ~**220** Git-tracked files, **~29,000** lines of TypeScript/TSX across apps, **71** HTTP route handlers, **10** Prisma models, **12** NestJS modules.
 
-### 👤 Quản lý Người dùng
-- **Authentication**: Email/Phone, Google Sign-in, 2FA
-- **User Preferences**: Lưu sở thích, dị ứng, mục tiêu
-- **Favorite Recipes**: Lưu các món ăn yêu thích
-- **Profile Management**: Cập nhật thông tin cá nhân
+## Features
 
-### 🍽️ Recipe Management
-- **Browse Recipes**: Xem tất cả món ăn
-- **Recipe Details**: Chi tiết món ăn, nguyên liệu, cách làm
-- **Search & Filter**: Tìm kiếm theo tên, tag, vùng miền
-- **Categories**: Phân loại theo loại món (Breakfast, Lunch, Dinner, etc.)
+### Meal planning
+- Weekly calendar with breakfast / lunch / dinner slots
+- Copy meal plan from one week to another
+- AI-assisted menu suggestions from preferences and goals
 
-## 🛠️ Tech Stack
+### Nutrition tracking
+- Daily food logging and macro stats
+- Nutrition goals (calories, protein, fat, carbs)
+- BMR/TDEE-style targets via user preferences
 
-### Frontend
-- **Framework**: React Native với Expo
-- **Language**: TypeScript
-- **Navigation**: React Navigation
-- **State Management**: React Context API
-- **UI Components**: React Native Components + Ionicons
-- **Calendar**: react-native-calendars
-- **HTTP Client**: Axios
+### Recipes & shopping
+- Browse, search, and filter recipes (including regional tags)
+- Favorite recipes
+- Auto-generated shopping lists from meal plans
 
-### Backend
-- **Framework**: NestJS
-- **Language**: TypeScript
-- **Database**: PostgreSQL với Prisma ORM
-- **Authentication**: JWT + Firebase Admin (Google Sign-in)
-- **2FA**: Speakeasy (TOTP)
-- **AI Integration**: Google Generative AI (Gemini 2.0 Flash)
-- **API Documentation**: Swagger/OpenAPI
-- **Security**: Helmet, CORS, bcrypt/argon2
+### AI assistant
+- Natural-language chat for meal ideas
+- Context-aware suggestions from history and preferences
+- **OpenAI** (`gpt-4o` by default) — see [AI note](#ai-provider-note) below
 
-### Database
-- **ORM**: Prisma
-- **Database**: PostgreSQL
-- **Migrations**: Prisma Migrate
-- **Indexes**: Tối ưu cho performance (16+ indexes)
+### User management
+- Email or phone login, Google Sign-in, TOTP 2FA
+- Password reset via email OTP (Mailjet)
+- Profile, avatar, and preference management
 
-### DevOps & Deployment
-- **Containerization**: Docker + Docker Compose cho backend stack
-- **Reverse Proxy**: Nginx route traffic public vào NestJS service
-- **Cloud Deployment**: AWS EC2 (public access qua port 80)
-- **CI/CD**: GitHub Actions tự động lint, test, build và deploy
+### Admin dashboard
+- Dashboard stats, user/recipe/ingredient CRUD
+- Meal plan and food log oversight
+- Role-based access (`ADMIN`)
 
-## 📁 Cấu trúc Dự án
+### Automation
+- Scheduled ingredient price updates (Puppeteer + cron, `Asia/Ho_Chi_Minh`)
 
-```
-daily-cook/
-├── backend/                 # NestJS Backend
-│   ├── src/
-│   │   ├── auth/           # Authentication module
-│   │   ├── users/          # User management
-│   │   ├── recipes/        # Recipe CRUD & favorites
-│   │   ├── mealplan/       # Meal planning
-│   │   ├── food-log/       # Nutrition tracking
-│   │   ├── shopping-list/  # Shopping list
-│   │   ├── ai/             # AI integration (Gemini)
-│   │   ├── prisma/         # Prisma service
-│   │   └── common/         # Shared utilities
-│   ├── prisma/
-│   │   ├── schema.prisma   # Database schema
-│   │   ├── migrations/     # Database migrations
-│   │   └── seed.ts         # Seed data
-│   └── package.json
-│
-├── frontend/                # React Native App
-│   ├── src/
-│   │   ├── screens/        # App screens
-│   │   ├── api/            # API clients
-│   │   ├── context/        # React Context
-│   │   ├── config/         # Configuration
-│   │   └── utils/          # Utilities
-│   └── package.json
-│
-└── README.md
+## Architecture
+
+```mermaid
+flowchart TB
+  subgraph clients
+    Mobile[Expo App iOS / Android / Web]
+    Admin[Vite Admin Dashboard]
+  end
+
+  subgraph edge
+    Vercel[Vercel - Admin and optional Web]
+    Nginx[Nginx :80]
+  end
+
+  subgraph aws [AWS EC2]
+    API[NestJS API :3000]
+    PG[(PostgreSQL 16)]
+    Cron[Scheduled price scraper]
+  end
+
+  subgraph external
+    OpenAI[OpenAI API]
+    Google[Google OAuth / Firebase]
+    Mailjet[Mailjet Email]
+    GCS[Google Cloud Storage]
+  end
+
+  Mobile -->|HTTPS REST JWT| Nginx
+  Admin -->|HTTPS REST JWT| Vercel
+  Admin --> Nginx
+  Nginx --> API
+  API --> PG
+  API --> OpenAI
+  API --> Google
+  API --> Mailjet
+  API --> GCS
+  Cron --> API
 ```
 
-## 🚀 Quick Start
+**Pattern:** Modular monolith API, shared PostgreSQL, JWT-secured REST. No Kubernetes or message queue in-repo. Admin and mobile web can deploy separately on Vercel.
+
+### NestJS modules
+
+`auth`, `users`, `recipes`, `mealplan`, `food-log`, `shopping-list`, `ai`, `admin`, `price-scraper`, `prisma`, `email`, plus global `ScheduleModule`.
+
+## Tech Stack
+
+| Layer | Technologies |
+|-------|----------------|
+| **Mobile** | React Native 0.81.5, Expo 54, React Navigation 7, Axios, Firebase client |
+| **API** | NestJS 11, TypeScript 5.7, Prisma 6, Passport JWT, Argon2, class-validator |
+| **Database** | PostgreSQL 16 |
+| **AI** | OpenAI SDK (`gpt-4o`, configurable via `OPENAI_MODEL`) |
+| **Email** | Mailjet |
+| **Admin** | React 19, Vite 7, TanStack React Query, React Router 7 |
+| **Ops** | Docker, Docker Compose, Nginx, GitHub Actions, AWS EC2 |
+| **Deploy (alt)** | Railway (`backend/railway.json`), Vercel (`vercel.json`) |
+
+### AI provider note
+
+Runtime AI uses **OpenAI** (`backend/src/ai/ai.service.ts`). `GEMINI_API_KEY` and `@google/generative-ai` remain in env/package for legacy or future use but are not wired in `src/`.
+
+## Installation
 
 ### Prerequisites
 
-- Node.js 18+ và npm
+- Node.js 18+ (20 recommended for backend)
 - PostgreSQL 14+
-- Expo CLI (cho frontend)
-- Google Cloud Account (cho Gemini API - optional)
+- Expo CLI / Expo Go (mobile)
+- OpenAI API key (optional, for AI features)
+- Google / Firebase / Mailjet credentials (optional)
 
-### 1. Clone Repository
+### 1. Clone
 
 ```bash
 git clone <repository-url>
 cd daily-cook
 ```
 
-### 2. Backend Setup
+### 2. Backend
 
 ```bash
 cd backend
-
-# Install dependencies
 npm install
-
-# Setup environment variables
 cp .env.example .env
-# Edit .env với các giá trị của bạn:
-# - DATABASE_URL
-# - JWT_SECRET
-# - GEMINI_API_KEY (optional, cho AI features)
+# Edit DATABASE_URL, JWT_SECRET, OPENAI_API_KEY, etc.
 
-# Generate Prisma Client
 npm run prisma:generate
-
-# Run migrations
 npm run prisma:migrate
+npm run prisma:seed   # optional
 
-# Seed database (optional)
-npm run prisma:seed
-
-# Start development server
 npm run start:dev
 ```
 
-Backend sẽ chạy tại `http://localhost:3000`
-API Documentation: `http://localhost:3000/api`
+- API: `http://localhost:3000`
+- Swagger: `http://localhost:3000/api/docs`
 
-### 3. Frontend Setup
+### 3. Mobile (Expo)
 
 ```bash
 cd frontend
-
-# Install dependencies
 npm install
-
-# Setup environment variables
 cp .env.example .env
-# Edit .env với API URL:
-# - API_URL=http://localhost:3000
+# Set EXPO_PUBLIC_BACKEND_URL=http://localhost:3000
 
-# Start Expo development server
 npm start
+# npm run android | ios | web
 ```
 
-Sau đó scan QR code bằng Expo Go app hoặc chạy trên emulator:
-- Android: `npm run android`
-- iOS: `npm run ios`
-- Web: `npm run web`
-
-## 🔐 Environment Variables
-
-### Backend (.env)
-
-```env
-# Database
-DATABASE_URL="postgresql://user:password@localhost:5432/dailycook?schema=public"
-
-# JWT
-JWT_SECRET="your-secret-key-here"
-JWT_EXPIRES_IN="7d"
-
-# Firebase (cho Google Sign-in)
-FIREBASE_PROJECT_ID="your-project-id"
-FIREBASE_PRIVATE_KEY="your-private-key"
-FIREBASE_CLIENT_EMAIL="your-client-email"
-
-# Gemini AI (optional)
-GEMINI_API_KEY="your-gemini-api-key"
-
-# Server
-PORT=3000
-NODE_ENV=development
-```
-
-### Frontend (.env)
-
-```env
-API_URL=http://localhost:3000
-```
-
-## 📚 API Documentation
-
-Backend cung cấp Swagger UI tại `http://localhost:3000/api` khi chạy development server.
-
-### Main Endpoints
-
-#### Authentication
-- `POST /auth/register` - Đăng ký tài khoản
-- `POST /auth/login` - Đăng nhập
-- `POST /auth/google` - Google Sign-in
-- `POST /auth/forgot-password` - Quên mật khẩu
-- `POST /auth/verify-reset-code` - Xác thực mã OTP
-- `POST /auth/reset-password` - Đặt lại mật khẩu
-- `GET /auth/me` - Lấy thông tin user hiện tại
-
-#### Recipes
-- `GET /recipes` - Danh sách recipes (với pagination, search, filter)
-- `GET /recipes/:id` - Chi tiết recipe
-- `POST /recipes` - Tạo recipe mới
-- `GET /recipes/me/favorites` - Recipes yêu thích
-- `POST /recipes/:id/favorite` - Thêm vào favorites
-- `DELETE /recipes/:id/favorite` - Xóa khỏi favorites
-
-#### Meal Plans
-- `GET /mealplans` - Lấy meal plans (với date range)
-- `PUT /mealplans` - Tạo/cập nhật meal plan
-- `POST /mealplans/suggest-menu` - AI gợi ý thực đơn
-- `GET /mealplans/today-suggest` - Gợi ý cho hôm nay
-- `PATCH /mealplans/:id/slot` - Cập nhật slot (breakfast/lunch/dinner)
-- `POST /mealplans/copy-week` - Copy tuần
-
-#### Food Logs
-- `GET /food-logs` - Lấy food logs (với date range)
-- `POST /food-logs` - Tạo food log
-- `GET /food-logs/stats` - Thống kê dinh dưỡng
-- `PATCH /food-logs/:id` - Cập nhật food log
-- `DELETE /food-logs/:id` - Xóa food log
-
-#### AI
-- `POST /ai/chat` - Chat với AI
-- `POST /ai/suggest-from-chat` - Gợi ý món từ chat
-- `POST /ai/list-models` - List available models (debug)
-
-#### Users
-- `GET /users/me` - Profile hiện tại
-- `PATCH /users/me` - Cập nhật profile
-- `PATCH /users/me/password` - Đổi mật khẩu
-- `GET /users/me/preferences` - Lấy preferences
-- `PATCH /users/me/preferences` - Cập nhật preferences
-
-#### Shopping List
-- `GET /mealplans/shopping/from-range` - Tạo shopping list từ date range
-
-## 🗄️ Database Schema
-
-### Main Models
-
-- **User**: Thông tin người dùng, authentication
-- **UserPreference**: Preferences, mục tiêu dinh dưỡng
-- **Recipe**: Món ăn với ingredients, nutrition info
-- **RecipeItem**: Quan hệ Recipe-Ingredient với số lượng
-- **Ingredient**: Nguyên liệu với nutrition data
-- **MealPlan**: Kế hoạch bữa ăn theo ngày
-- **FoodLog**: Ghi lại bữa ăn đã ăn
-- **ShoppingList**: Danh sách mua sắm
-- **UserFavoriteRecipe**: Recipes yêu thích
-- **AIRecommendationLog**: Log AI suggestions (cho training)
-
-### Performance Indexes
-
-Schema đã được tối ưu với 16+ indexes cho:
-- Date range queries (MealPlan, FoodLog)
-- Trending & sorting (Recipe)
-- Joins (RecipeItem)
-- User-specific queries
-- AI training data queries
-
-Xem chi tiết tại `backend/SCHEMA_INDEX_REPORT.md`
-
-## 🤖 AI Integration
-
-### Gemini Setup
-
-1. Tạo Google Cloud Project
-2. Enable Generative Language API
-3. Tạo API Key
-4. Thêm vào `.env`: `GEMINI_API_KEY=your-key`
-
-Xem hướng dẫn chi tiết tại:
-- `GEMINI_SETUP.md` - Setup guide
-- `GEMINI_ENABLE_API.md` - Enable API steps
-- `QUICK_START_GEMINI.md` - Quick start
-
-### Model
-
-- **Default**: `gemini-2.0-flash`
-- **Features**: Chat, recipe suggestions, context-aware recommendations
-
-## 📱 Screens
-
-### Authentication & Onboarding
-- Launch Screen
-- Onboarding (2 screens)
-- Sign In / Sign Up
-- Forgot Password Flow (3 screens)
-
-### Main Features
-- **Home**: Dashboard với today's meals, stats, quick actions
-- **Calendar**: Lịch thực đơn hàng tuần
-- **Meal Suggest**: AI chat để gợi ý món ăn
-- **Nutrition Tracker**: Theo dõi dinh dưỡng
-- **Nutrition Goals**: Thiết lập mục tiêu
-- **Shopping List**: Danh sách mua sắm
-- **Category**: Browse recipes theo category
-- **Details**: Chi tiết recipe
-- **Favorite Recipes**: Món ăn yêu thích
-- **Profile**: Quản lý profile và settings
-
-Xem chi tiết tại `SCREEN_STATUS_REPORT.md`
-
-## 🧪 Development
-
-### Backend Scripts
+### 4. Admin dashboard
 
 ```bash
-npm run start:dev      # Development với hot reload
-npm run build          # Build production
-npm run start:prod     # Run production
-npm run prisma:generate # Generate Prisma Client
-npm run prisma:migrate  # Run migrations
-npm run prisma:seed     # Seed database
-npm run lint           # Lint code
-npm run test           # Run tests
+cd admin-dashboard
+npm install
+cp .env.example .env
+# Set VITE_API_URL=http://localhost:3000
+
+npm run dev
 ```
 
-### Frontend Scripts
+## Environment Variables
+
+### Backend (`backend/.env`)
+
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `JWT_SECRET`, `JWT_EXPIRES_IN` | JWT signing |
+| `OPENAI_API_KEY`, `OPENAI_MODEL` | AI features (`gpt-4o` default) |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google Sign-in |
+| `FIREBASE_SA_BASE64`, `FIREBASE_PROJECT_ID` | Firebase Admin (optional) |
+| `MAILJET_*` | Password reset / transactional email |
+| `PORT`, `NODE_ENV` | Server config |
+
+See `backend/.env.example` for the full list.
+
+### Production Docker (`.env.production`)
+
+Used by `docker-compose.prod.yml`. Copy from `.env.production.example`:
+
+- `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
+- `JWT_SECRET`, `OPENAI_API_KEY`, auth and Mailjet secrets
+
+### Frontend (`frontend/.env`)
+
+| Variable | Description |
+|----------|-------------|
+| `EXPO_PUBLIC_BACKEND_URL` | API base URL |
+| `EXPO_PUBLIC_FIREBASE_*` | Firebase client config |
+| `EXPO_PUBLIC_GOOGLE_*_CLIENT_ID` | Google Sign-in per platform |
+
+### Admin (`admin-dashboard/.env`)
+
+| Variable | Description |
+|----------|-------------|
+| `VITE_API_URL` | API base URL |
+
+## Docker Setup
+
+Production stack: **`docker-compose.prod.yml`** (3 services).
+
+| Service | Image / build | Purpose |
+|---------|---------------|---------|
+| `postgres` | `postgres:16-alpine` | Database (`postgres_data` volume) |
+| `backend` | `backend/Dockerfile` (Node 20 Alpine) | NestJS API; runs `prisma migrate deploy` then `node dist/src/main.js` |
+| `nginx` | `nginx:1.27-alpine` | Reverse proxy, public port **80** → `backend:3000` |
+
+### Run on server
 
 ```bash
-npm start              # Start Expo dev server
-npm run android        # Run on Android
-npm run ios            # Run on iOS
-npm run web            # Run on Web
-```
-
-## 🚢 Production Deployment (DevOps)
-
-### 1) Chuẩn bị môi trường trên EC2
-
-```bash
-sudo apt update
-sudo apt install -y docker.io docker-compose-plugin git
-sudo usermod -aG docker $USER
-```
-
-Clone source code vào EC2:
-
-```bash
-git clone <repository-url> ~/daily-cook
-cd ~/daily-cook
 cp .env.production.example .env.production
-```
+# Fill in secrets
 
-Sau đó cập nhật `.env.production` với secret thực tế.
-
-### 2) Chạy stack production local/EC2
-
-```bash
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-Stack production gồm:
-- `postgres` (database)
-- `backend` (NestJS API)
-- `nginx` (reverse proxy public port 80)
+Nginx config: `infra/nginx/default.conf`.
 
-### 3) CI/CD GitHub Actions
+**Kubernetes:** Not used in this repository.
 
-Workflow: `.github/workflows/backend-cicd.yml`
+## CI/CD Pipeline
 
-Pipeline tự động:
-- Run lint + tests + build backend
-- Build Docker image
-- SSH vào EC2 và chạy `scripts/deploy-ec2.sh`
+**Workflow:** `.github/workflows/backend-cicd.yml`
 
-Cần cấu hình GitHub Secrets:
-- `EC2_HOST`
-- `EC2_USERNAME`
-- `EC2_SSH_KEY`
-- `EC2_PROJECT_DIR` (ví dụ `/home/ubuntu/daily-cook`)
+| Trigger | Action |
+|---------|--------|
+| Push / PR to `main` | CI only |
+| Push to `feature/ai` | CI + deploy to EC2 |
 
-### 4) Deploy script trên EC2
+### CI job (`backend/`)
 
-Script `scripts/deploy-ec2.sh` tự động:
-- Pull source code mới nhất từ branch deploy
-- Rebuild và restart `docker-compose.prod.yml`
-- Dọn docker images không dùng
+1. `npm ci`
+2. `npx prisma generate`
+3. `npm run lint`
+4. `npm run test -- --runInBand`
+5. `npm run build`
+6. `docker build` → `dailycook-backend:$GITHUB_SHA`
 
-## 🗃️ Database Migrations
+### Deploy job
 
-```bash
-# Create new migration
-npm run prisma:migrate
+- Runs only on `refs/heads/feature/ai` after CI passes
+- SSH to EC2 via `appleboy/ssh-action`
+- Executes `scripts/deploy-ec2.sh` (pull branch, `docker compose up -d --build`, prune images)
 
-# Apply migrations (production)
-npm run prisma:deploy
+### GitHub Secrets
 
-# Reset database (development only - sẽ mất data!)
-npx prisma migrate reset
+| Secret | Purpose |
+|--------|---------|
+| `EC2_HOST` | Server hostname |
+| `EC2_USERNAME` | SSH user |
+| `EC2_SSH_KEY` | Private key |
+| `EC2_PROJECT_DIR` | Project path on EC2 (e.g. `/home/ubuntu/daily-cook`) |
+
+**Gaps:** No CI for `frontend/` or `admin-dashboard/`; deploy is tied to branch `feature/ai`. Estimated pipeline duration: **~8–15 minutes** *(not measured in Actions)*.
+
+## API Documentation
+
+Interactive docs: **`GET /api/docs`** (Swagger UI) when the API is running.
+
+### Route groups
+
+| Prefix | Highlights |
+|--------|------------|
+| `/` | Health check |
+| `/auth` | Register, login, Google, 2FA, forgot/reset password, `me` |
+| `/users` | Profile, password, avatar, preferences |
+| `/recipes` | CRUD, search, favorites |
+| `/mealplans` | Plans, slots, copy-week, suggest, shopping from range, nutrition |
+| `/food-logs` | CRUD, stats, cooking history |
+| `/ai` | Chat, suggest-from-chat, calorie goal, nutrition tips |
+| `/shopping-list` | Generate from recipes |
+| `/price-scraper` | Manual price update trigger |
+| `/admin` | Stats and CRUD (requires `ADMIN` role) |
+
+### Example endpoints
+
+```
+POST   /auth/register
+POST   /auth/login
+POST   /auth/google
+GET    /auth/me
+
+GET    /recipes
+GET    /recipes/:id
+POST   /recipes/:id/favorite
+
+GET    /mealplans
+PUT    /mealplans
+POST   /mealplans/suggest-menu
+POST   /mealplans/copy-week
+
+GET    /food-logs
+POST   /food-logs
+GET    /food-logs/stats
+
+POST   /ai/chat
+POST   /ai/suggest-from-chat
 ```
 
-## 📊 Performance
+**Total route handlers:** **71** (measured from controller decorators).
 
-### Database Indexes
+### Database models (Prisma)
 
-Schema đã được tối ưu với indexes cho:
-- ✅ Date range queries (MealPlan, FoodLog)
-- ✅ Trending & sorting (Recipe)
-- ✅ User-specific queries
-- ✅ Joins (RecipeItem)
-- ✅ AI training data
+`User`, `UserPreference`, `Ingredient`, `Recipe`, `RecipeItem`, `MealPlan`, `ShoppingList`, `FoodLog`, `AIRecommendationLog`, `UserFavoriteRecipe` — **10** models, **6** migrations, **20** `@@index` entries.
 
-**Cải thiện dự kiến**: 10-100x nhanh hơn với dataset lớn
+## Folder Structure
 
-## 🔒 Security
+```
+daily-cook/
+├── backend/                    # NestJS API (~9.6k LOC)
+│   ├── src/
+│   │   ├── auth/               # JWT, Google, 2FA, password reset
+│   │   ├── users/              # Profile, preferences, avatar
+│   │   ├── recipes/            # CRUD, favorites, search
+│   │   ├── mealplan/           # Weekly plans, AI suggest, copy week
+│   │   ├── food-log/           # Nutrition logs and stats
+│   │   ├── shopping-list/
+│   │   ├── ai/                 # OpenAI integration
+│   │   ├── admin/              # Admin-only API
+│   │   ├── price-scraper/      # Puppeteer + scheduled updates
+│   │   ├── email/              # Mailjet
+│   │   ├── prisma/             # PrismaService
+│   │   └── common/             # Guards, filters, interceptors
+│   ├── prisma/
+│   │   ├── schema.prisma
+│   │   ├── migrations/
+│   │   └── seed.ts
+│   └── Dockerfile
+│
+├── frontend/                   # Expo app (~15.4k LOC)
+│   └── src/
+│       ├── screens/            # 26 screens
+│       ├── api/                # Typed API clients
+│       ├── context/            # Auth state
+│       └── utils/
+│
+├── admin-dashboard/            # Vite admin (~4.1k LOC)
+│   └── src/pages/              # 7 pages (Dashboard, Users, Recipes, …)
+│
+├── infra/nginx/                # Reverse proxy config
+├── scripts/deploy-ec2.sh     # EC2 deploy script
+├── .github/workflows/          # Backend CI/CD
+├── docker-compose.prod.yml
+└── README.md
+```
 
-- JWT authentication
-- Password hashing (bcrypt/argon2)
-- 2FA support (TOTP)
-- CORS configuration
-- Helmet security headers
-- Input validation (class-validator)
-- SQL injection protection (Prisma)
+## Performance Metrics
 
-## 📝 License
+> **Legend:** *(measured)* = from repo at README update time. *(estimate)* = industry benchmark or documented assumption — replace with production analytics when available.
 
-UNLICENSED - Private project
+### Project scale *(measured)*
 
-## 🤝 Contributing
+| Metric | Value |
+|--------|-------|
+| Applications | **3** (mobile, API, admin) |
+| Git-tracked files | **220** |
+| TypeScript/TSX LOC | **~29,046** |
+| — Backend `backend/src` | **9,570** / 80 files |
+| — Mobile `frontend/src` | **15,402** / 38 files |
+| — Admin `admin-dashboard/src` | **4,074** / 17 files |
+| NestJS modules | **12** |
+| REST controllers | **10** |
+| HTTP route handlers | **71** |
+| Prisma models | **10** |
+| DB indexes (`@@index`) | **20** |
+| Prisma migrations | **6** |
+| Mobile screens | **26** |
+| Admin pages | **7** |
+| Unit test files (`*.spec.ts`) | **10** |
 
-Dự án này là private. Nếu bạn có quyền truy cập, vui lòng:
-1. Tạo feature branch
-2. Commit changes
-3. Push và tạo Pull Request
+**Complexity:** Medium–large for a small team (2–4 devs): full-stack mobile + API + admin + AI + DevOps.
 
-## 📞 Support
+### Tech stack assessment
 
-Nếu có vấn đề, vui lòng:
-1. Kiểm tra documentation trong các file `.md`
-2. Xem API docs tại `/api` endpoint
-3. Kiểm tra logs trong console
+| Layer | Choice | Strength | Trade-off |
+|-------|--------|----------|-----------|
+| Mobile | Expo 54 + RN 0.81 | One codebase for iOS/Android/Web | Expo SDK coupling; native builds via EAS |
+| API | NestJS 11 + Prisma 6 | Clear modules, Swagger, type-safe DB | Steeper learning curve than plain Express |
+| DB | PostgreSQL 16 | ACID, relational meal/recipe model | Higher ops cost than embedded DB |
+| AI | OpenAI `gpt-4o` | Strong reasoning for chat/suggestions | API cost, rate limits, vendor lock-in |
+| Auth | JWT + Google + TOTP | Multi-channel login | Many secrets to manage |
+| Admin | Vite + React Query | Fast builds, API caching | Separate deploy from mobile |
+| Ops | Docker + Nginx + GH Actions | Repeatable deploys | Single EC2 node — not HA |
 
-## 🎯 Roadmap
+### End-user time savings *(estimate)*
 
-### Completed ✅
-- [x] Authentication & User Management
-- [x] Recipe Management
-- [x] Meal Planning
-- [x] Nutrition Tracking
-- [x] Shopping List
-- [x] AI Integration (Gemini)
-- [x] Nutrition Goals
-- [x] Performance Optimization (Indexes)
+Assumption: manual meal planning + shopping list ~**45 min/week**; with DailyCook (calendar, copy week, auto shopping list, AI): ~**13 min/week**.
 
-### In Progress 🚧
-- [ ] Recipe creation UI
-- [ ] Advanced analytics
-- [ ] Meal plan templates
+| Activity | Manual | With DailyCook | Saved |
+|----------|--------|----------------|-------|
+| Weekly meal plan | ~25 min | ~8 min | **~17 min/week** |
+| Shopping list | ~12 min | ~3 min | **~9 min/week** |
+| Find suitable meals / calories | ~8 min | ~2 min | **~6 min/week** |
+| **Total** | **~45 min** | **~13 min** | **~32 min (~71%)** |
 
-### Planned 📋
-- [ ] Social features (share recipes)
-- [ ] Meal prep planning
-- [ ] Grocery delivery integration
-- [ ] Multi-language support
+Per active user per year: **~28 hours** *(32 min × 52 ÷ 60)*.
 
-## 📖 Documentation
+### Infrastructure cost *(estimate)*
 
-- `SCREEN_STATUS_REPORT.md` - Trạng thái các screens
-- `SCHEMA_INDEX_REPORT.md` - Database indexes report
-- `GEMINI_SETUP.md` - Gemini AI setup guide
-- `GEMINI_ENABLE_API.md` - Enable Gemini API
-- `QUICK_START_GEMINI.md` - Quick start Gemini
-- `GEMINI_MODEL_TROUBLESHOOTING.md` - Troubleshooting
+| Item | Monthly |
+|------|---------|
+| EC2 `t3.small` + 30 GB EBS + light transfer | **~$20–26** |
+| Vercel (admin hobby tier) | **$0** *(within free limits)* |
+| OpenAI (~500 chats/month, ~800 tokens each) | **~$2–10** *(varies by model/pricing)* |
+
+vs. paid meal-plan apps (**$8–15/user/month**): self-hosted stack can be **~85–95%** lower per user at scale *(software only; excludes dev time)*.
+
+### Database & CI *(mixed)*
+
+- **20 indexes:** User + date-range queries (meal plans, food logs) expected **~10–50×** faster than full table scans at scale *(estimate; not benchmarked in CI)*.
+- **CI/CD:** **~8–15 min** per backend deploy vs. **~30–45 min** manual *(estimate)*.
+- **Tests:** **10** spec files; aim for **≥60%** service-layer coverage for production-critical paths *(recommendation)*.
+
+### Summary scores *(estimate)*
+
+| Criterion | Score |
+|-----------|-------|
+| Architecture | **8/10** — clear layering, sensible monorepo |
+| Features | **8/10** — meal + nutrition + AI vertical slice |
+| Scalability | **6.5/10** — single EC2; consider queue/cache for AI |
+| Security | **7.5/10** — JWT, 2FA, Helmet; add AI rate limits |
+| DevEx / docs | **7/10** — Swagger + README; limited prod benchmarks |
+
+### Development effort *(estimate)*
+
+| Phase | Person-months |
+|-------|----------------|
+| MVP (auth, recipes, basic meal plan) | **2–3** |
+| Nutrition, shopping, AI | **1.5–2** |
+| Admin, hardening, deploy | **1–1.5** |
+| **Total (cumulative)** | **~4.5–6.5** |
+
+## Author
+
+Academic graduation project
+
+| | |
+|---|---|
+| **University** |Industrial University of Ho Chi Minh City |
+| **Falcuty** | Information Technology |
+| **Field of study** | Software Engineering |
+| **Student 1** | Vu Phan Gia Thinh - 21086881 |
+| **Student 2** | Nguyen Ba Minh Triet - 21073911 |
+| **Instructor** | PhD. Nguyen Trong Tien |
+| **Year** | Sep-2025 to Dec-2025 |
 
 ---
 
-**Made with ❤️ for better meal planning and nutrition tracking**
+**Made for better meal planning and nutrition tracking.**
+
